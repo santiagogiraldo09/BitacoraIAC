@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pantalla de Registros</title>
+    <link rel="icon" href="{{ url_for('static', filename='logo.png') }}" type="image/x-icon">
+    <link rel="stylesheet" href="{{ url_for('static', filename='registros.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">  
+</head>
+<body>
+    <!-- Contenedor principal -->
+    <div class="main-container">
+        
+        <!-- Espacio para el logo -->
+        <div class="logo-container">
+            <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo de la empresa" class="logo">
+        </div>
+
+        <!-- Texto de introducción -->
+        <div class="intro-text">
+            <h2>Lista de Proyectos</h2>
+        </div>
+
+        <!-- Botón para agregar nuevo proyecto -->
+        <div class="add-project-container">
+            <button class="add-project-button" onclick="redirectToAddProject()">Agregar Nuevo Proyecto</button>
+        </div>
+
+        <!-- Lista de proyectos como botones con scroll-->
+        <div class="records-container">
+           <!-- <button class="record-button" onclick="redirectToProjectDetails('Proyecto Bitacora')">
+            <button class="record-button" onclick="redirectToProjectDetails('Proyecto Bitacora')">
+            <button class="record-button" onclick="redirectToProjectDetails('Proyecto Bitacora')">
+                Proyecto A<br><small>Fecha: 2024-09-22</small>
+            </button>
+            <button class="record-button" onclick="redirectToProjectDetails('Proyecto B')">
+                Proyecto B<br><small>Fecha: 2024-09-21</small>
+            </button>
+            <button class="record-button" onclick="redirectToProjectDetails('Proyecto C')">
+                Proyecto C<br><small>Fecha: 2024-09-20</small>
+            </button>-->
+
+            <!-- Proyectos dinámicos desde PostgreSQL -->
+            {% for project in db_projects %}
+            <button class="record-button" onclick="redirectToProjectDetails('{{ project.name }}', '{{ project.id_proyecto }}')">
+                {{ project.name }}<br><small>Fecha: {{ project.fecha_inicio }}</small>
+            </button>
+            {% endfor %}
+        </div>
+
+        <!-- Menú inferior (ahora fijo)-->
+        <div class="bottom-menu">
+            <a href="{{ url_for('history') }}" class="bottom-button"><i class="fas fa-history"></i></a>
+            <!--<a href="{{ url_for('registros') }}" class="bottom-button"><i class="fas fa-home"></i></a>-->
+            <!--<button class="bottom-button"><i class="fas fa-user"></i></button>-->
+            <div class="dropdown">
+                <button id="dropdown-btn" class="bottom-button">
+                    <i class="fas fa-plus"></i>
+                </button>
+                <div id="dropdown-menu" class="dropdown-menu">
+                    <a href="{{ url_for('history') }}" class="dropdown-item">
+                        <i class="fas fa-clipboard-list"></i> Historial</a>
+                    <a href="{{ url_for('inventario') }}" class="dropdown-item">
+                        <i class="fas fa-clipboard-check"></i> Inventario</a>
+                </div>
+            </div>
+            <a href="{{ url_for('usuario') }}" class="bottom-button"><i class="fas fa-user"></i></a>
+        </div>
+        
+    </div>
+
+    <script>
+               
+        function redirectToAddProject() {
+            // Redirigir a la página para agregar un nuevo proyecto
+            window.location.href = "{{ url_for('add_project') }}";
+        }
+
+        function redirectToProjectDetails(projectName, projectId) {
+            // Redirigir a la página de detalles del proyecto con el nombre como parámetro
+            //window.location.href = `{{ url_for('projectdetails') }}?name=${encodeURIComponent(projectName)}`;
+            window.location.href = `/paginaprincipal?project_id=${projectId}&project=${encodeURIComponent(projectName)}?id=${encodeURIComponent(projectId)}`;
+            //window.location.href = `/index?project_id=${projectId}&project=${encodeURIComponent(projectName)}`;
+        }
+        document.addEventListener('DOMContentLoaded', function () {
+            const dropdownBtn = document.getElementById('dropdown-btn');
+            const dropdownMenu = document.getElementById('dropdown-menu');
+
+            // Alternar el menú desplegable al hacer clic en el botón
+            dropdownBtn.addEventListener('click', function (event) {
+                event.stopPropagation(); // Evitar que el clic cierre el menú
+                dropdownMenu.classList.toggle('show');
+            });
+
+            // Cerrar el menú al hacer clic fuera de él
+            document.addEventListener('click', function (event) {
+                if (!dropdownMenu.contains(event.target)) {
+                    dropdownMenu.classList.remove('show');
+                }
+            });
+        });
+
+    </script>
+</body>
+</html>

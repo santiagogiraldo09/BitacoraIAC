@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Historial de Registros</title>
+    <link rel="icon" href="{{ url_for('static', filename='logoISA.jpg') }}" type="image/x-icon">
+    <link rel="stylesheet" href="{{ url_for('static', filename='history.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        
+        .evidencia-container {
+            margin-top: 15px;
+            padding-top: 10px;
+            border-top: 1px solid #eee;
+        }
+
+        .media-gallery {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px; /* Espacio entre las miniaturas */
+            margin-top: 5px;
+        }
+
+        .media-item img,
+        .media-item video {
+            width: 100px;  /* Ancho de la miniatura */
+            height: 100px; /* Alto de la miniatura */
+            object-fit: cover; /* Asegura que la imagen/video cubra el espacio sin deformarse */
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            background-color: #e0e0e0; /* Un fondo por si el medio no carga */
+        }
+
+        .record-details {
+            background-color: #f9f9f9;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .record-details h3 {
+            margin-top: 0;
+            color: #333;
+        }
+        .record-field {
+            margin-bottom: 8px;
+        }
+        .record-field label {
+            font-weight: bold;
+            margin-right: 5px;
+        }
+        .back-button {
+            background-color: #FF6600;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-bottom: 20px;
+        }
+        .project-title {
+            text-align: center;
+            margin: 20px 0;
+            color: #333;
+        }
+        .centrar {
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="main-container">
+        <div class="logo-container">
+            <img src="{{ url_for('static', filename='logoISA.jpg') }}" alt="Logo" class="logo">
+        </div>
+
+        <div class="intro-text">
+            <h2>Historial de Registros</h2>
+        </div>
+
+        <div class="centrar">
+            <button class="back-button" onclick="window.location.href='{{ url_for('history') }}'">
+                <i class="fas fa-arrow-left"></i> Volver al historial
+            </button>
+        </div>
+
+        <div class="centrar" style="margin-bottom: 15px;">
+            <label><input type="checkbox" id="select-all"> Seleccionar todos</label>
+            <button type="submit" class="back-button" style="margin-left: 10px;">
+                <i class="fas fa-file-excel"></i> Exportar registros seleccionados a Excel
+            </button>
+        </div>
+
+        <div id="project-records" class="records-container">
+            <form id="export-form" method="POST" action="/exportar-registros-excel">
+                <input type="hidden" name="project_id" value="{{ project_id }}">
+
+                {% if registros %}
+                    {% for registro in registros %}
+                    <div class="record-details">
+                        <input type="checkbox" name="registro_ids" value="{{ registro.id }}" class="registro-checkbox">
+                        <h3>Código de registro: {{ registro.id }}</h3>
+                        <div class="record-field">
+                            <label>Tipo de informe:</label>
+                            <span>{{ registro.zona_intervencion }}</span>
+                        </div>
+                        <div class="record-field">
+                            <label>Sede:</label>
+                            <span>{{ registro.items_value }}</span>
+                        </div>
+                        <div class="record-field">
+                            <label>Repuestos utilizados:</label>
+                            <span>{{ registro.metros_lineales }}</span>
+                        </div>
+                        <div class="record-field">
+                            <label>Repuestos a cotizar:</label>
+                            <span>{{ registro.proximas_tareas }}</span>
+                        </div>
+
+                        <div class="evidencia-container">
+                            <label>Evidencia:</label>
+                            
+                            <div class="media-gallery">
+                                {% for foto in registro.fotos %}
+                                    <div class="media-item">
+                                        <img src="{{ foto.file_data }}" alt="Evidencia fotográfica">
+                                        {% if foto.description %}
+                                            <p class="media-description">{{ foto.description }}</p>
+                                        {% endif %}
+                                    </div>
+                                {% endfor %}
+
+                                {% for video in registro.videos %}
+                                    <div class="media-item">
+                                        <video controls playsinline preload="metadata">
+                                            <source src="{{ video.file_data }}">
+                                            Tu navegador no soporta la reproducción de video.
+                                        </video>
+                                        {% if video.description %}
+                                            <p class="media-description">{{ video.description }}</p>
+                                        {% endif %}
+                                    </div>
+                                {% endfor %}
+                            </div>
+                            
+                            {% if not registro.fotos and not registro.videos %}
+                                <p><small>No hay evidencia multimedia para este registro.</small></p>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <p>No hay registros para este proyecto</p>
+                {% endif %}
+            </form>
+
+            <script>
+                // Seleccionar todos los registros
+                document.getElementById('select-all').addEventListener('change', function () {
+                    const checkboxes = document.querySelectorAll('.registro-checkbox');
+                    checkboxes.forEach(cb => cb.checked = this.checked);
+                });
+            </script>
+        </div>
+
+        <div class="bottom-menu">
+            <a href="{{ url_for('registros') }}" class="bottom-button"><i class="fas fa-home"></i></a>
+        </div>
+    </div>
+</body>
+</html>
