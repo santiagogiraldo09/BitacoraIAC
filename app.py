@@ -959,33 +959,22 @@ def projectdetails():
 
 @app.route('/addproject', methods=['GET', 'POST'])
 def add_project():
-    if 'user_id' not in session:  # Asegúrate de tener el user_id en la sesión
+    if 'user_id' not in session:
         return redirect(url_for('principalscreen'))
     
     if request.method == 'POST':
         try:
-            # Obtener datos del formulario
-            project_data = {
-                'name': request.form['project-name'],
-                'start_date': request.form['start-date'],
-                'end_date': request.form['end-date'],
-                'director': request.form['director'],
-                'location': request.form['location'],
-                'coordinates': request.form['coordinates'],
-                'user_id': session['user_id']  # ID del usuario actual
-            }
-            
-            # Guardar en PostgreSQL
+            # Captura de datos incluyendo cliente y numero_proyecto
             project_id = create_project(
-                project_data['user_id'],
-                project_data['name'],
-                project_data['start_date'],
-                project_data['end_date'],
-                project_data['director'],
-                project_data['location'],
-                project_data['coordinates'],
-                project_data['cliente'],
-                project_data['numero-proyecto'] 
+                session['user_id'],
+                request.form['project-name'],
+                request.form['start-date'],
+                request.form['end-date'],
+                request.form['director'],
+                request.form['location'],
+                request.form['coordinates'],
+                request.form['cliente'],         # Nuevo
+                request.form['numero-proyecto']  # Nuevo
             )
             
             if project_id:
