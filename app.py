@@ -451,16 +451,15 @@ def insert_registro_bitacora(respuestas, id_proyecto, fotos=None, videos=None):
         if conn:
             conn.close()
 
-def create_project(user_id, nombre, fecha_inicio, fecha_fin, director, ubicacion, coordenadas):
+def create_project(user_id, nombre, fecha_inicio, fecha_fin, director, ubicacion, coordenadas, cliente, numero_proyecto):
     try:
         conn = psycopg2.connect(**POSTGRES_CONFIG)
-        #conn = get_db_connection()
         cursor = conn.cursor()
         
         cursor.execute(
-            """INSERT INTO proyectos (nombre_proyecto, fecha_inicio, fecha_fin, director_obra, ubicacion, coordenadas, user_id)
-               VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id_proyecto""",
-            (nombre, fecha_inicio, fecha_fin, director, ubicacion, coordenadas, user_id)
+            """INSERT INTO proyectos (nombre_proyecto, fecha_inicio, fecha_fin, director_obra, ubicacion, coordenadas, user_id, cliente, numero_proyecto)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id_proyecto""",
+            (nombre, fecha_inicio, fecha_fin, director, ubicacion, coordenadas, user_id, cliente, numero_proyecto)
         )
         
         project_id = cursor.fetchone()[0]
@@ -481,7 +480,7 @@ def get_user_projects(user_id):
         cursor = conn.cursor()
         
         cursor.execute(
-            """SELECT id_proyecto, nombre_proyecto, fecha_inicio, director_obra, user_id 
+            """SELECT id_proyecto, nombre_proyecto, fecha_inicio, director_obra, user_id, cliente, numero_proyecto 
                FROM proyectos WHERE user_id = %s ORDER BY fecha_inicio DESC""",
             (user_id,)
         )
@@ -494,9 +493,9 @@ def get_user_projects(user_id):
                 'fecha_inicio': row[2].strftime('%Y-%m-%d'),
                 'director_obra': row[3],
                 'user_id': row[4],
-
+                'cliente': row[5],         # Disponible para el template
+                'numero_proyecto': row[6]  # Disponible para el template
             })
-        
         return projects
     except psycopg2.Error as e:
         print(f"Error al obtener proyectos: {e}")
@@ -984,7 +983,9 @@ def add_project():
                 project_data['end_date'],
                 project_data['director'],
                 project_data['location'],
-                project_data['coordinates']
+                project_data['coordinates'],
+                project_data['cliente'],
+                project_data['numero-proyecto'] 
             )
             
             if project_id:

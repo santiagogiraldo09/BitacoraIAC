@@ -22,8 +22,15 @@
         <div class="form-container">
             <!-- Formulario para agregar el proyecto -->
             <form id="project-form" action="{{ url_for('add_project') }}" method="POST">
+
                 <label for="project-name">Nombre del Proyecto:</label>
                 <input type="text" id="project-name" name="project-name" required placeholder="Ingrese el nombre del proyecto">
+
+                <label for="numero-proyecto">Número del Proyecto:</label>
+                <input type="text" id="numero-proyecto" name="numero-proyecto" required placeholder="Ej: P-001">
+
+                <label for="cliente">Cliente:</label>
+                <input type="text" id="cliente" name="cliente" required placeholder="Nombre del cliente">
 
                 <label for="start-date">Fecha de Inicio:</label>
                 <input type="date" id="start-date" name="start-date" required>
