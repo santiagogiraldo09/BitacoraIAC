@@ -21,6 +21,10 @@ let contadorFacturar = 0;
 let contadorSeguridad = 0;
 let contadorAmbiental = 0;
 let contadorCalidad = 0;
+// Variable para controlar el reconocedor de despertar
+let activeWakeWordRecognizer;
+// Variable para el reconocedor de campo actual
+let fieldRecognizer;
 
 // =================================================================
 //          INICIALIZACIÓN DE EVENTOS
@@ -32,6 +36,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('activate-camera-btn').style.display = 'none';
     });
 
+    iniciarModoEspera();
     // Listeners para los controles de la cámara
     document.getElementById('start-record-btn').addEventListener('click', startVideoRecording);
     document.getElementById('stop-record-btn').addEventListener('click', stopVideoRecording);
@@ -48,6 +53,65 @@ document.addEventListener('DOMContentLoaded', () => {
         button.addEventListener('click', stopFieldRecording);
     });
 });
+
+async function iniciarModoEspera() {
+    console.log("👂 Modo espera activado: Escuchando palabra clave...");
+    
+    const speechConfig = SpeechSDK.SpeechConfig.fromSubscription("999fcb4d3f34436ab454ec47920febe0", "centralus");
+    speechConfig.speechRecognitionLanguage = "es-CO";
+    
+    const audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
+    activeWakeWordRecognizer = new SpeechSDK.SpeechRecognizer(speechConfig, audioConfig);
+
+    activeWakeWordRecognizer.recognizing = (s, e) => {
+        const transcripcionParcial = e.result.text.toLowerCase();
+        
+        // Definimos la(s) palabra(s) clave
+        if (transcripcionParcial.includes("bitácora") || transcripcionParcial.includes("oye bitácora")) {
+            console.log("🚀 Palabra clave detectada");
+            
+            // Detenemos la escucha de despertar para evitar conflictos
+            activeWakeWordRecognizer.stopContinuousRecognitionAsync();
+            
+            // La aplicación "habla" para confirmar
+            responderUsuario();
+        }
+    };
+
+    activeWakeWordRecognizer.startContinuousRecognitionAsync();
+}
+
+async function responderUsuario() {
+    const speechConfig = SpeechSDK.SpeechConfig.fromSubscription("999fcb4d3f34436ab454ec47920febe0", "centralus");
+    speechConfig.speechSynthesisLanguage = "es-CO";
+    speechConfig.speechSynthesisVoiceName = "es-CO-GonzaloNeural";
+
+    const synthesizer = new SpeechSDK.SpeechSynthesizer(speechConfig);
+    
+    const textoAResponder = "Te escucho. ¿Cuál es el tipo de informe?";
+    
+    synthesizer.speakTextAsync(textoAResponder, 
+        result => {
+            if (result.reason === SpeechSDK.ResultReason.SynthesizingAudioCompleted) {
+                // Una vez que termina de hablar, activamos el primer campo automáticamente
+                activarPrimerCampo();
+            }
+            synthesizer.close();
+        },
+        error => {
+            console.error("Error al hablar:", error);
+            synthesizer.close();
+        }
+    );
+}
+
+function activarPrimerCampo() {
+    // Buscamos el botón de micrófono del primer campo (Tipo de informe)
+    const firstMicBtn = document.querySelector('.record-btn[data-target-input="question_0"]');
+    if (firstMicBtn) {
+        startFieldRecording(firstMicBtn); // Reutiliza tu función actual
+    }
+}
 
 // =================================================================
 //          FUNCIONES DE CÁMARA (FOTO Y VIDEO)
@@ -985,9 +1049,111 @@ function handleVideoUpload(event) {
     event.target.value = '';
 }
 
+
 // =================================================================
 //          GRABACIÓN DE AUDIO POR CAMPO
 // =================================================================
+async function startFieldRecording(btn) {
+    // Evita duplicar grabaciones si ya hay una activa
+    if (isFieldRecording) return;
+    
+    const targetInputId = btn.dataset.targetInput;
+    currentTargetInput = document.getElementById(targetInputId);
+    const stopButton = document.querySelector(`.stop-btn[data-target-input='${targetInputId}']`);
+    
+    // 1. Configuración del SDK de Azure Speech
+    const speechConfig = SpeechSDK.SpeechConfig.fromSubscription("999fcb4d3f34436ab454ec47920febe0", "centralus");
+    speechConfig.speechRecognitionLanguage = "es-CO"; // Localización para Colombia
+    const audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
+    
+    const recognizer = new SpeechSDK.SpeechRecognizer(speechConfig, audioConfig);
+    
+    // 2. Actualización de Interfaz Visual (Mantiene tus estilos CSS)
+    isFieldRecording = true;
+    btn.style.display = 'none';
+    stopButton.style.display = 'flex';
+    currentTargetInput.classList.add('recording-active');
+    currentTargetInput.placeholder = "Escuchando...";
+
+    // 3. Lógica de Detección de Comandos en Tiempo Real (Manos Libres)
+    recognizer.recognizing = (s, e) => {
+        const partialText = e.result.text.toLowerCase();
+        
+        // Si detecta la frase clave, detiene y salta al siguiente
+        if (partialText.includes("siguiente campo")) {
+            console.log("⏭️ Comando detectado: Saltando al siguiente campo.");
+            recognizer.stopContinuousRecognitionAsync();
+            finalizarVisualizacionCampo(btn, stopButton);
+            irAlSiguienteCampo(targetInputId); 
+        }
+    };
+
+    // 4. Lógica de Transcripción Final (Cuando el usuario termina una frase)
+    recognizer.recognized = (s, e) => {
+        if (e.result.reason === SpeechSDK.ResultReason.RecognizedSpeech) {
+            // Limpiamos el comando del texto para que no se escriba en el input
+            const cleanText = e.result.text.replace(/siguiente campo/gi, "").trim();
+            if (cleanText) {
+                currentTargetInput.value += (currentTargetInput.value ? ' ' : '') + cleanText;
+            }
+        }
+    };
+
+    // 5. Inicio del Reconocimiento Continuo
+    recognizer.startContinuousRecognitionAsync();
+
+    // 6. Soporte para Clic Manual en el botón Stop
+    stopButton.onclick = () => {
+        console.log("🛑 Detención manual por clic.");
+        recognizer.stopContinuousRecognitionAsync();
+        finalizarVisualizacionCampo(btn, stopButton);
+        
+        // Al ser manual, regresamos al modo de espera de palabra clave global
+        if (typeof iniciarModoEspera === 'function') iniciarModoEspera();
+    };
+}
+
+// Función auxiliar para resetear la UI del campo
+function finalizarVisualizacionCampo(btn, stopButton) {
+    isFieldRecording = false;
+    btn.style.display = 'flex';
+    stopButton.style.display = 'none';
+    currentTargetInput.classList.remove('recording-active');
+    currentTargetInput.placeholder = "";
+}
+
+// Gestiona el salto automático entre IDs (question_0, question_1, etc.)
+function irAlSiguienteCampo(currentId) {
+    const currentIndex = parseInt(currentId.split('_')[1]);
+    const nextIndex = currentIndex + 1;
+    const nextTargetId = `question_${nextIndex}`;
+    
+    const nextMicBtn = document.querySelector(`.record-btn[data-target-input="${nextTargetId}"]`);
+    
+    if (nextMicBtn) {
+        // Feedback auditivo antes de saltar
+        const labelText = document.querySelector(`label[for="${nextTargetId}"]`).innerText;
+        hablarTexto(`Copiado. Pasando a ${labelText}`);
+        
+        // Delay de 1.5s para evitar que se transcriba la voz del sistema
+        setTimeout(() => {
+            startFieldRecording(nextMicBtn);
+        }, 1500);
+    } else {
+        hablarTexto("Formulario completado. Ya puedes guardar el registro.");
+        if (typeof iniciarModoEspera === 'function') iniciarModoEspera();
+    }
+}
+
+// Permite que la app le hable al usuario confirmando acciones
+function hablarTexto(texto) {
+    const speechConfig = SpeechSDK.SpeechConfig.fromSubscription("999fcb4d3f34436ab454ec47920febe0", "centralus");
+    speechConfig.speechSynthesisVoiceName = "es-CO-GonzaloNeural";
+    const synthesizer = new SpeechSDK.SpeechSynthesizer(speechConfig);
+    synthesizer.speakTextAsync(texto);
+}
+
+/*
 function startFieldRecording(recordButton) {
     if (isFieldRecording) return;
     navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
@@ -1009,7 +1175,7 @@ function startFieldRecording(recordButton) {
             transcribeAudio(audioBlob);
         };
     }).catch(() => alert("No se pudo acceder al micrófono."));
-}
+}*/
 
 function stopFieldRecording() {
     if (audioMediaRecorder && isFieldRecording) {
