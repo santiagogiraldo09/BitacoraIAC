@@ -1054,61 +1054,71 @@ function handleVideoUpload(event) {
 //          GRABACIÓN DE AUDIO POR CAMPO
 // =================================================================
 async function startFieldRecording(btn) {
-    // Evita duplicar grabaciones si ya hay una activa
     if (isFieldRecording) return;
     
     const targetInputId = btn.dataset.targetInput;
     currentTargetInput = document.getElementById(targetInputId);
     const stopButton = document.querySelector(`.stop-btn[data-target-input='${targetInputId}']`);
     
-    // 1. Configuración del SDK de Azure Speech
     const speechConfig = SpeechSDK.SpeechConfig.fromSubscription("999fcb4d3f34436ab454ec47920febe0", "centralus");
-    speechConfig.speechRecognitionLanguage = "es-CO"; // Localización para Colombia
+    speechConfig.speechRecognitionLanguage = "es-CO";
     const audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
     
     const recognizer = new SpeechSDK.SpeechRecognizer(speechConfig, audioConfig);
     
-    // 2. Actualización de Interfaz Visual (Mantiene tus estilos CSS)
     isFieldRecording = true;
     btn.style.display = 'none';
     stopButton.style.display = 'flex';
     currentTargetInput.classList.add('recording-active');
     currentTargetInput.placeholder = "Escuchando...";
 
-    // 3. Lógica de Detección de Comandos en Tiempo Real (Manos Libres)
     recognizer.recognizing = (s, e) => {
         const partialText = e.result.text.toLowerCase();
         
-        // Si detecta la frase clave, detiene y salta al siguiente
-        if (partialText.includes("siguiente campo")) {
+        // --- COMANDO: REPETIR REGISTRO ---
+        if (partialText.includes("repetir registro")) {
+            console.log("🔄 Comando 'Repetir registro' detectado.");
+            
+            // Detenemos el reconocimiento actual
+            recognizer.stopContinuousRecognitionAsync();
+            
+            // Limpiamos el campo de texto y notificamos al usuario
+            currentTargetInput.value = "";
+            hablarTexto("Entendido, borrando campo. Repite lo que quieres registrar.");
+            
+            // Reiniciamos la visualización y volvemos a activar el mismo campo
+            finalizarVisualizacionCampo(btn, stopButton);
+            setTimeout(() => {
+                startFieldRecording(btn);
+            }, 1500); 
+        }
+        
+        // --- COMANDO: SIGUIENTE CAMPO ---
+        else if (partialText.includes("siguiente campo")) {
             console.log("⏭️ Comando detectado: Saltando al siguiente campo.");
             recognizer.stopContinuousRecognitionAsync();
             finalizarVisualizacionCampo(btn, stopButton);
-            irAlSiguienteCampo(targetInputId); 
+            irAlSiguienteCampo(targetInputId);
         }
     };
 
-    // 4. Lógica de Transcripción Final (Cuando el usuario termina una frase)
     recognizer.recognized = (s, e) => {
         if (e.result.reason === SpeechSDK.ResultReason.RecognizedSpeech) {
-            // Limpiamos el comando del texto para que no se escriba en el input
-            const cleanText = e.result.text.replace(/siguiente campo/gi, "").trim();
+            // Filtramos los comandos para que no se escriban en el texto final
+            let cleanText = e.result.text.replace(/siguiente campo/gi, "");
+            cleanText = cleanText.replace(/repetir registro/gi, "").trim();
+            
             if (cleanText) {
                 currentTargetInput.value += (currentTargetInput.value ? ' ' : '') + cleanText;
             }
         }
     };
 
-    // 5. Inicio del Reconocimiento Continuo
     recognizer.startContinuousRecognitionAsync();
 
-    // 6. Soporte para Clic Manual en el botón Stop
     stopButton.onclick = () => {
-        console.log("🛑 Detención manual por clic.");
         recognizer.stopContinuousRecognitionAsync();
         finalizarVisualizacionCampo(btn, stopButton);
-        
-        // Al ser manual, regresamos al modo de espera de palabra clave global
         if (typeof iniciarModoEspera === 'function') iniciarModoEspera();
     };
 }
