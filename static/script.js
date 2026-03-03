@@ -1100,13 +1100,59 @@ async function startFieldRecording(btn) {
             finalizarVisualizacionCampo(btn, stopButton);
             irAlSiguienteCampo(targetInputId);
         }
+
+        // --- COMANDO: ACTIVAR CÁMARA ---
+        else if (partialText.includes("activar cámara")) {
+            console.log("📸 Cámara solicitada, manteniendo micrófono activo...");
+            // Eliminamos el stopContinuousRecognitionAsync de aquí para que siga escuchando
+            
+            hablarTexto("Cámara abierta. Di 'Tomar foto' cuando estés listo.");
+            
+            const cameraBtn = document.getElementById('activate-camera-btn');
+            if (cameraBtn) cameraBtn.click(); 
+            
+            // Opcional: bajar un poco el volumen del sistema si fuera necesario
+        }
+        // --- COMANDO: TOMAR FOTO ---
+        else if (partialText.includes("tomar foto")) {
+            console.log("📸 Capturando fotografía...");
+            
+            if (typeof takePhoto === 'function') {
+                takePhoto(); 
+                hablarTexto("Foto capturada. Puedes tomar otra o decir 'Guardar registro'.");
+                
+                // TRUCO TÉCNICO: Forzamos un reinicio rápido del buffer interno
+                // para que no se quede bloqueado con la frase anterior
+                e.result.text = ""; 
+            }
+        }
+        
+        /// --- COMANDO: GUARDAR REGISTRO ---
+        // Usamos "includes" con variaciones comunes para mayor seguridad
+        if (partialText.includes("guardar registro") || partialText.includes("finalizar registro")) {
+            console.log("💾 Iniciando guardado de bitácora...");
+            
+            // Aquí sí detenemos el reconocimiento para procesar el envío
+            recognizer.stopContinuousRecognitionAsync();
+            finalizarVisualizacionCampo(btn, stopButton);
+            
+            hablarTexto("Entendido. Guardando todos los datos en la base de datos de I.A.C.");
+            
+            if (typeof saveRecord === 'function') {
+                saveRecord();
+            }
+        }
     };
 
     recognizer.recognized = (s, e) => {
         if (e.result.reason === SpeechSDK.ResultReason.RecognizedSpeech) {
             // Filtramos los comandos para que no se escriban en el texto final
             let cleanText = e.result.text.replace(/siguiente campo/gi, "");
-            cleanText = cleanText.replace(/repetir registro/gi, "").trim();
+            cleanText = cleanText.replace(/repetir registro/gi, "");
+            cleanText = cleanText.replace(/activar cámara/gi, "");
+             cleanText = cleanText.replace(/tomar foto/gi, "");
+              cleanText = cleanText.replace(/guardar registro/gi, "")
+            .trim();
             
             if (cleanText) {
                 currentTargetInput.value += (currentTargetInput.value ? ' ' : '') + cleanText;
@@ -1307,58 +1353,39 @@ function isIOS() {
 function saveRecord() {
     const loadingOverlay = document.getElementById('loading-overlay');
     const saveButton = document.getElementById('save-record');
+    
     loadingOverlay.style.display = 'flex';
     saveButton.disabled = true;
     saveButton.textContent = "Guardando...";
 
-    const projectId = new URLSearchParams(window.location.search).get("project_id");
+    // Obtenemos el ID del proyecto de la URL (?project_id=XX)
+    const urlParams = new URLSearchParams(window.location.search);
+    const projectId = urlParams.get("project_id");
+
+    // Mapeo directo a las nuevas columnas de la tabla registrosiac
     const respuestas = {
-        zona_intervencion: document.getElementById('question_0').value,
-        items:             document.getElementById('question_1').value,
-        metros_lineales:   document.getElementById('question_2').value,
-        proximas_tareas:   document.getElementById('question_3').value
+        tipo_informe:      document.getElementById('question_0').value,
+        sede:              document.getElementById('question_1').value,
+        repuestos_usados:  document.getElementById('question_2').value,
+        repuestos_cotizar: document.getElementById('question_3').value
     };
 
-    // ===================================================================
-    //            INICIO DE LA CORRECCIÓN - RECOLECCIÓN DE DATOS
-    // ===================================================================
-    // En lugar de solo filtrar, ahora recorremos cada item para buscar su descripción.
-
+    // Procesamiento de fotos (mantenemos descripciones si existen)
     const finalPhotos = [];
     capturedPhotos.forEach((fileData, index) => {
-        // Solo procesamos la foto si no ha sido eliminada (no es nula)
         if (fileData !== null) {
-            // Buscamos su campo de descripción por el ID único que creamos (ej. "photo_desc_0")
             const descriptionInput = document.getElementById(`photo_desc_${index}`);
-            
             finalPhotos.push({
-                file_data: fileData, // El archivo en base64
-                description: descriptionInput ? descriptionInput.value : "" // El texto de la descripción
+                file_data: fileData,
+                description: descriptionInput ? descriptionInput.value : ""
             });
         }
     });
 
-    const finalVideos = [];
-    capturedVideos.forEach((fileData, index) => {
-        // Hacemos lo mismo para los videos
-        if (fileData !== null) {
-            const descriptionInput = document.getElementById(`video_desc_${index}`);
-            
-            finalVideos.push({
-                file_data: fileData, // El video en base64
-                description: descriptionInput ? descriptionInput.value : "" // Su descripción
-            });
-        }
-    });
-
-    // ===================================================================
-    //                         FIN DE LA CORRECCIÓN
-    // ===================================================================
-
+    // Construcción del Payload (Quitamos videos por solicitud)
     const payload = {
         respuestas: respuestas,
-        fotos: finalPhotos,   // Ahora es un array de objetos {file_data, description}
-        videos: finalVideos,  // Ahora es un array de objetos {file_data, description}
+        fotos: finalPhotos,
         project_id: projectId
     };
 
@@ -1368,19 +1395,39 @@ function saveRecord() {
         body: JSON.stringify(payload)
     })
     .then(response => {
-        if (!response.ok) return response.json().then(err => { throw new Error(err.error || 'Error del servidor') });
+        if (!response.ok) {
+            return response.json().then(err => { throw new Error(err.mensaje || 'Error del servidor') });
+        }
         return response.json();
     })
     .then(data => {
-        loadingOverlay.style.display = 'none';
+        // --- TODO EL ÉXITO OCURRE AQUÍ ---
+        console.log("Respuesta del servidor:", data);
+        
+        // 1. Feedback por voz
+        hablarTexto("El registro se ha guardado correctamente.");
+        
+        // 2. Quitar el overlay de carga
+        const loadingOverlay = document.getElementById('loading-overlay');
+        if (loadingOverlay) loadingOverlay.style.display = 'none';
+        
+        // 3. Alerta de éxito y Redirección
         alert(data.mensaje || "¡Registro guardado exitosamente!");
-        window.location.href = '/registros';
+        window.location.href = '/registros'; // Cambia esto por tu ruta de historial
     })
     .catch(error => {
-        loadingOverlay.style.display = 'none';
-        saveButton.disabled = false;
-        saveButton.textContent = "Guardar registro";
-        alert(`Error: ${error.message}`);
+        // --- TODO EL ERROR OCURRE AQUÍ ---
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const saveButton = document.getElementById('save-record');
+        
+        if (loadingOverlay) loadingOverlay.style.display = 'none';
+        if (saveButton) {
+            saveButton.disabled = false;
+            saveButton.textContent = "Guardar registro";
+        }
+        
+        console.error("Error al guardar:", error);
+        alert(`Error al procesar: ${error.message}`);
     });
 }
 

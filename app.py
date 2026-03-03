@@ -30,6 +30,7 @@ from PIL import Image
 import base64
 import uuid
 import requests
+import psycopg2
 
 UPLOAD_FOLDER = 'uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -384,69 +385,62 @@ def verify_user(email, password):
 
 def insert_registro_bitacora(respuestas, id_proyecto, fotos=None, videos=None):
     """
-    Inserta un nuevo registro de bitácora, junto con sus fotos y videos asociados
-    y sus descripciones, en la base de datos.
+    Inserta un nuevo registro en la tabla registrosiac, junto con sus fotos asociadas.
     """
-    conn = None  # Definimos conn aquí para asegurarnos de que exista en el bloque finally
+    conn = None 
     try:
         conn = psycopg2.connect(**POSTGRES_CONFIG)
         cursor = conn.cursor()
 
-        # CAMBIO 1: Simplificamos el INSERT principal.
-        # - Eliminamos la columna 'foto_base64' que ya es obsoleta.
-        # - Cambiamos los nombres de las claves para que coincidan con tu formulario.
+        # CORRECCIÓN 1: Apuntar a la tabla 'registrosiac' y usar las nuevas columnas
+        # Quitamos zona_intervencion, items, etc., que causaban el error de NULL
         cursor.execute("""
-            INSERT INTO registrosbitacoraeqing (
-                zona_intervencion, -- Mapeado desde "Tipo de informe"
-                items,             -- Mapeado desde "Sede"
-                metros_lineales,   -- Mapeado desde "Repuestos utilizados"
-                proximas_tareas,   -- Mapeado desde "Repuestos a cotizar"
-                id_proyecto
+            INSERT INTO registrosiac (
+                id_proyecto,
+                tipo_informe,      -- Mapeado desde question_0
+                sede,              -- Mapeado desde question_1
+                repuestos_usados,  -- Mapeado desde question_2
+                repuestos_cotizar  -- Mapeado desde question_3
             )
             VALUES (%s, %s, %s, %s, %s)
             RETURNING id_registro
         """, (
-            respuestas.get('zona_intervencion'),
-            respuestas.get('items'),
-            respuestas.get('metros_lineales'),
-            respuestas.get('proximas_tareas'),
             id_proyecto,
+            respuestas.get('tipo_informe'),
+            respuestas.get('sede'),
+            respuestas.get('repuestos_usados'),
+            respuestas.get('repuestos_cotizar'),
         ))
+        
         id_registro = cursor.fetchone()[0]
 
-        # CAMBIO 2: Actualizamos el bucle para que maneje objetos (archivo + descripción).
-        # Ahora esperamos una lista de diccionarios, no solo una lista de strings.
+        # CORRECCIÓN 2: Guardar fotos vinculadas al nuevo id_registro
+        # Usamos la tabla videos_registro como mencionaste que tenías para evidencias
         for foto_obj in fotos or []:
             file_data = foto_obj.get('file_data')
             description = foto_obj.get('description')
-            cursor.execute(
-                """INSERT INTO fotos_registro 
-                   (id_registro, imagen_base64, description) 
-                   VALUES (%s, %s, %s)""",
-                (id_registro, file_data, description)
-            )
-
-        # CAMBIO 3: Hacemos lo mismo para los videos.
-        for video_obj in videos or []:
-            file_data = video_obj.get('file_data')
-            description = video_obj.get('description')
-            cursor.execute(
-                """INSERT INTO videos_registro 
-                   (id_registro, video_base64, description) 
-                   VALUES (%s, %s, %s)""",
-                (id_registro, file_data, description)
-            )
+            
+            if file_data: # Solo insertar si hay datos de imagen
+                cursor.execute(
+                    """INSERT INTO fotos_registro 
+                       (id_registro, imagen_base64, description) 
+                       VALUES (%s, %s, %s)""",
+                    (id_registro, file_data, description)
+                )
 
         conn.commit()
-        print(f"Registro {id_registro} guardado exitosamente en PostgreSQL.")
+        print(f"✅ Registro {id_registro} guardado exitosamente en la tabla registrosiac.")
 
-    except psycopg2.Error as e: # MEJORA: Capturamos el error específico de psycopg2 para más detalles
-        print(f"Error de base de datos al guardar en PostgreSQL: {e}")
-        # Opcional: podrías querer que la función devuelva un error
-        # raise e 
+    except psycopg2.Error as e:
+        if conn:
+            conn.rollback()
+        print(f"❌ Error de base de datos al guardar en PostgreSQL: {e}")
+        raise e 
     except Exception as e:
-        print(f"Error general al guardar en PostgreSQL: {str(e)}")
-        # raise e
+        if conn:
+            conn.rollback()
+        print(f"❌ Error general al guardar en PostgreSQL: {str(e)}")
+        raise e
     finally:
         if conn:
             conn.close()
@@ -1001,6 +995,7 @@ def ask_question_route():
         return jsonify({'response': ''}), 200
     else:
         return jsonify({'error': 'Error al sintetizar la pregunta.'}), 500
+    
 
 @app.route('/guardar-registro', methods=['POST'])
 def guardar_registro():
@@ -1018,10 +1013,11 @@ def guardar_registro():
         # Guardar en PostgreSQL
         insert_registro_bitacora(respuestas, int(project_id), fotos, videos)
 
-        return jsonify({"mensaje": "Registro guardado exitosamente!!"}), 200
+        return jsonify({"mensaje": "Registro guardado exitosamente en PostgreSQL."}), 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 @app.route('/eliminar-proyecto', methods=['POST'])
 def eliminar_proyecto():

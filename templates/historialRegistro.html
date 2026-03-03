@@ -98,55 +98,30 @@
 
                 {% if registros %}
                     {% for registro in registros %}
-                    <div class="record-details">
-                        <input type="checkbox" name="registro_ids" value="{{ registro.id }}" class="registro-checkbox">
-                        <h3>Código de registro: {{ registro.id }}</h3>
-                        <div class="record-field">
-                            <label>Tipo de informe:</label>
-                            <span>{{ registro.zona_intervencion }}</span>
+                    <div class="registro-card">
+                        <div class="registro-header">
+                            <input type="checkbox" name="registro_ids" value="{{ registro.id_registro }}" class="registro-checkbox">
+                            <span class="fecha">{{ registro.fecha_registro.strftime('%d/%m/%Y %H:%M') }}</span>
                         </div>
-                        <div class="record-field">
-                            <label>Sede:</label>
-                            <span>{{ registro.items_value }}</span>
-                        </div>
-                        <div class="record-field">
-                            <label>Repuestos utilizados:</label>
-                            <span>{{ registro.metros_lineales }}</span>
-                        </div>
-                        <div class="record-field">
-                            <label>Repuestos a cotizar:</label>
-                            <span>{{ registro.proximas_tareas }}</span>
-                        </div>
+                        
+                        <div class="registro-body">
+                            <p><strong>Tipo de informe:</strong> {{ registro.tipo_informe }}</p>
+                            <p><strong>Sede:</strong> {{ registro.sede }}</p>
+                            <p><strong>Repuestos utilizados:</strong> {{ registro.repuestos_usados }}</p>
+                            <p><strong>Repuestos a cotizar:</strong> {{ registro.repuestos_cotizar }}</p>
 
-                        <div class="evidencia-container">
-                            <label>Evidencia:</label>
-                            
-                            <div class="media-gallery">
-                                {% for foto in registro.fotos %}
-                                    <div class="media-item">
-                                        <img src="{{ foto.file_data }}" alt="Evidencia fotográfica">
-                                        {% if foto.description %}
-                                            <p class="media-description">{{ foto.description }}</p>
-                                        {% endif %}
-                                    </div>
-                                {% endfor %}
-
-                                {% for video in registro.videos %}
-                                    <div class="media-item">
-                                        <video controls playsinline preload="metadata">
-                                            <source src="{{ video.file_data }}">
-                                            Tu navegador no soporta la reproducción de video.
-                                        </video>
-                                        {% if video.description %}
-                                            <p class="media-description">{{ video.description }}</p>
-                                        {% endif %}
-                                    </div>
-                                {% endfor %}
+                            <div class="evidencia-container">
+                                <div class="media-gallery">
+                                    {% for foto in registro.fotos %}
+                                        <div class="media-item">
+                                            <img src="{{ foto.imagen_base64 }}" alt="Evidencia">
+                                            {% if foto.description %}
+                                                <p class="media-description">{{ foto.description }}</p>
+                                            {% endif %}
+                                        </div>
+                                    {% endfor %}
+                                </div>
                             </div>
-                            
-                            {% if not registro.fotos and not registro.videos %}
-                                <p><small>No hay evidencia multimedia para este registro.</small></p>
-                            {% endif %}
                         </div>
                     </div>
                     {% endfor %}
