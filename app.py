@@ -1387,5 +1387,74 @@ def exportar_proyectos_excel():
         if conn:
             conn.close()
 
+@app.route('/exportar-proyectos-pdf', methods=['POST'])
+def exportar_proyectos_pdf():
+    project_ids = request.form.getlist('project_ids')
+    
+    if not project_ids:
+        flash("No se seleccionaron proyectos", "error")
+        return redirect(url_for('history'))
+
+    try:
+        conn = psycopg2.connect(**POSTGRES_CONFIG)
+        cursor = conn.cursor()
+        buffer = io.BytesIO()
+        p = canvas.Canvas(buffer, pagesize=letter)
+        w, h = letter
+
+        for pid in project_ids:
+            # Info del Proyecto
+            cursor.execute("""
+                SELECT nombre_proyecto, fecha_inicio, fecha_fin, director_obra, ubicacion 
+                FROM proyectos WHERE id_proyecto = %s
+            """, (pid,))
+            proyecto = cursor.fetchone()
+            if not proyecto: continue
+
+            # Dibujar encabezado de página para el proyecto
+            p.setFont("Helvetica-Bold", 16)
+            p.drawString(50, h - 50, f"PROYECTO: {proyecto[0]}")
+            p.setFont("Helvetica", 10)
+            p.drawString(50, h - 65, f"Director: {proyecto[3]} | Ubicación: {proyecto[4]}")
+            p.line(50, h - 70, 550, h - 70)
+
+            # Obtener Registros de la nueva tabla registrosiac
+            cursor.execute("""
+                SELECT tipo_informe, sede, repuestos_usados, repuestos_cotizar, fecha_registro
+                FROM registrosiac WHERE id_proyecto = %s ORDER BY fecha_registro DESC
+            """, (pid,))
+            registros = cursor.fetchall()
+
+            y = h - 100
+            for reg in registros:
+                if y < 100:
+                    p.showPage()
+                    y = h - 50
+                
+                fecha_str = reg[4].strftime('%d/%m/%Y %H:%M') if reg[4] else "S/F"
+                p.setFont("Helvetica-Bold", 11)
+                p.drawString(60, y, f"Registro - {fecha_str}")
+                y -= 15
+                p.setFont("Helvetica", 10)
+                p.drawString(70, y, f"Tipo: {reg[0]} | Sede: {reg[1]}")
+                y -= 15
+                p.drawString(70, y, f"Repuestos Usados: {reg[2]}")
+                y -= 15
+                p.drawString(70, y, f"A cotizar: {reg[3]}")
+                y -= 25
+                p.line(70, y + 10, 500, y + 10) # Separador pequeño
+
+            p.showPage() # Nueva página por cada proyecto
+
+        p.save()
+        buffer.seek(0)
+        return send_file(buffer, as_attachment=True, download_name="reporte_proyectos.pdf", mimetype='application/pdf')
+
+    except Exception as e:
+        print(f"Error PDF Proyectos: {e}")
+        return str(e), 500
+    finally:
+        if conn: conn.close()
+
 if __name__ == '__main__':
     app.run(debug=True)

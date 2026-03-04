@@ -1100,39 +1100,24 @@ async function startFieldRecording(btn) {
             }, 1500); 
         }
         
-        // --- COMANDO: SIGUIENTE CAMPO ---
-        else if (partialText.includes("siguiente campo")) {
-            console.log("⏭️ Comando detectado: Saltando al siguiente campo.");
-            recognizer.stopContinuousRecognitionAsync();
-            finalizarVisualizacionCampo(btn, stopButton);
-            irAlSiguienteCampo(targetInputId);
-        }
-
         // --- COMANDO: ACTIVAR CÁMARA ---
         else if (partialText.includes("activar cámara")) {
-            console.log("📸 Cámara solicitada. Reiniciando micrófono en modo comandos...");
+            console.log("📸 Bloqueando escritura y abriendo cámara...");
 
-            // 1. Detenemos la transcripción del campo actual (esto apaga el micro un segundo)
-            recognizer.stopContinuousRecognitionAsync();
-            
-            // 2. Apagamos visualmente el botón de Stop
+            // 1. Activamos el bloqueo global
+            window.cameraActive = true; 
+
+            // 2. Ejecutamos la parte visual que ya te funcionó
             if (typeof finalizarVisualizacionCampo === "function") {
                 finalizarVisualizacionCampo(btn, stopButton);
             }
 
-            // 3. RE-ACTIVACIÓN: Volvemos a encender el micrófono para escuchar órdenes como "Tomar foto"
-            // Usamos un pequeño timeout para dejar que Azure cierre la sesión anterior antes de abrir la nueva
-            setTimeout(() => {
-                iniciarEscuchaComandosGlobales(); // Función que debemos asegurar que tienes
-                console.log("🎙️ Micrófono reactivado para comandos de cámara.");
-            }, 500);
+            hablarTexto("Cámara abierta. El dictado de texto se pausó, pero sigo atento a tus comandos.");
 
-            hablarTexto("Cámara abierta. Di 'Tomar foto' cuando estés listo.");
-
-            // 4. Abrir la cámara
+            // 3. Abrir la cámara
             const cameraBtn = document.getElementById('activate-camera-btn');
             if (cameraBtn) {
-                setTimeout(() => { cameraBtn.click(); }, 600);
+                setTimeout(() => { cameraBtn.click(); }, 300);
             }
         }
 
