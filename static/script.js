@@ -26,6 +26,8 @@ let activeWakeWordRecognizer;
 // Variable para el reconocedor de campo actual
 let fieldRecognizer;
 
+let cameraActive = false;
+
 // =================================================================
 //          INICIALIZACIÓN DE EVENTOS
 // =================================================================
@@ -1055,7 +1057,6 @@ function handleVideoUpload(event) {
     event.target.value = '';
 }
 
-
 // =================================================================
 //          GRABACIÓN DE AUDIO POR CAMPO
 // =================================================================
@@ -1109,16 +1110,32 @@ async function startFieldRecording(btn) {
 
         // --- COMANDO: ACTIVAR CÁMARA ---
         else if (partialText.includes("activar cámara")) {
-            console.log("📸 Cámara solicitada, manteniendo micrófono activo...");
-            // Eliminamos el stopContinuousRecognitionAsync de aquí para que siga escuchando
+            console.log("📸 Cámara solicitada. Reiniciando micrófono en modo comandos...");
+
+            // 1. Detenemos la transcripción del campo actual (esto apaga el micro un segundo)
+            recognizer.stopContinuousRecognitionAsync();
             
+            // 2. Apagamos visualmente el botón de Stop
+            if (typeof finalizarVisualizacionCampo === "function") {
+                finalizarVisualizacionCampo(btn, stopButton);
+            }
+
+            // 3. RE-ACTIVACIÓN: Volvemos a encender el micrófono para escuchar órdenes como "Tomar foto"
+            // Usamos un pequeño timeout para dejar que Azure cierre la sesión anterior antes de abrir la nueva
+            setTimeout(() => {
+                iniciarEscuchaComandosGlobales(); // Función que debemos asegurar que tienes
+                console.log("🎙️ Micrófono reactivado para comandos de cámara.");
+            }, 500);
+
             hablarTexto("Cámara abierta. Di 'Tomar foto' cuando estés listo.");
-            
+
+            // 4. Abrir la cámara
             const cameraBtn = document.getElementById('activate-camera-btn');
-            if (cameraBtn) cameraBtn.click(); 
-            
-            // Opcional: bajar un poco el volumen del sistema si fuera necesario
+            if (cameraBtn) {
+                setTimeout(() => { cameraBtn.click(); }, 600);
+            }
         }
+
         // --- COMANDO: TOMAR FOTO ---
         else if (partialText.includes("tomar foto")) {
             console.log("📸 Capturando fotografía...");

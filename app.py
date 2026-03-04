@@ -1101,6 +1101,81 @@ def transcribe_audio():
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
+@app.route('/exportar-pdf/<int:project_id>')
+def exportar_pdf(project_id):
+    conn = None
+    try:
+        conn = psycopg2.connect(**POSTGRES_CONFIG)
+        cursor = conn.cursor()
+
+        # 1. Consultar los datos de la nueva tabla
+        cursor.execute("""
+            SELECT tipo_informe, sede, repuestos_usados, repuestos_cotizar, fecha_registro
+            FROM registrosiac 
+            WHERE id_proyecto = %s 
+            ORDER BY fecha_registro DESC
+        """, (project_id,))
+        registros = cursor.fetchall()
+
+        # 2. Configurar el buffer y el PDF
+        buffer = io.BytesIO()
+        p = canvas.Canvas(buffer, pagesize=letter)
+        w, h = letter
+        
+        # Título del PDF
+        p.setFont("Helvetica-Bold", 16)
+        p.drawString(50, h - 50, f"Historial de Registros - Proyecto #{project_id}")
+        p.line(50, h - 60, 550, h - 60)
+
+        y = h - 90  # Posición inicial para escribir
+        p.setFont("Helvetica", 10)
+
+        for reg in registros:
+            # Validar espacio en la página para el siguiente bloque
+            if y < 150:
+                p.showPage()
+                y = h - 50
+
+            # Encabezado del registro
+            fecha_str = reg[4].strftime('%d/%m/%Y %H:%M') if reg[4] else "S/F"
+            p.setFont("Helvetica-Bold", 11)
+            p.setFillColorRGB(0.1, 0.1, 0.1)
+            p.drawString(50, y, f"Registro Fecha: {fecha_str}")
+            y -= 20
+
+            # Contenido
+            p.setFont("Helvetica", 10)
+            p.drawString(60, y, f"• Tipo de Informe: {reg[0]}")
+            y -= 15
+            p.drawString(60, y, f"• Sede: {reg[1]}")
+            y -= 15
+            p.drawString(60, y, f"• Repuestos Usados: {reg[2]}")
+            y -= 15
+            p.drawString(60, y, f"• Repuestos a Cotizar: {reg[3]}")
+            
+            y -= 30 # Espacio entre registros
+            p.line(60, y + 10, 500, y + 10) # Línea divisoria suave
+            y -= 10
+
+        p.save()
+        buffer.seek(0)
+        
+        return send_file(
+            buffer, 
+            as_attachment=True, 
+            download_name=f"Historial_Proyecto_{project_id}.pdf", 
+            mimetype='application/pdf'
+        )
+
+    except Exception as e:
+        print(f"Error generando PDF: {e}")
+        traceback.print_exc()
+        return f"Error al generar PDF: {e}", 500
+    finally:
+        if conn:
+            conn.close()
+
+
 #Exportar registros seleccionados a Excel
 @app.route('/exportar-registros-excel', methods=['POST'])
 def exportar_registros_excel():
@@ -1110,22 +1185,24 @@ def exportar_registros_excel():
     if not registro_ids and not project_id:
         return "No se seleccionaron registros ni proyecto", 400
 
+    conn = None
     try:
         conn = psycopg2.connect(**POSTGRES_CONFIG)
         cursor = conn.cursor()
 
+        # 1. Ajustamos la consulta a la nueva tabla 'registrosiac'
         if not registro_ids:
             cursor.execute("""
-                SELECT id_registro, zona_intervencion, items, metros_lineales, proximas_tareas, foto_base64
-                FROM registrosbitacoraeqing
+                SELECT id_registro, tipo_informe, sede, repuestos_usados, repuestos_cotizar, fecha_registro
+                FROM registrosiac
                 WHERE id_proyecto = %s
                 ORDER BY id_registro DESC
             """, (project_id,))
         else:
             format_ids = tuple(map(int, registro_ids))
             cursor.execute("""
-                SELECT id_registro, zona_intervencion, items, metros_lineales, proximas_tareas, foto_base64
-                FROM registrosbitacoraeqing
+                SELECT id_registro, tipo_informe, sede, repuestos_usados, repuestos_cotizar, fecha_registro
+                FROM registrosiac
                 WHERE id_registro IN %s
                 ORDER BY id_registro DESC
             """, (format_ids,))
@@ -1134,58 +1211,76 @@ def exportar_registros_excel():
 
         wb = Workbook()
         ws = wb.active
-        ws.title = "Registros"
+        ws.title = "Registros Bitácora"
 
-        # Encabezado
-        ws.append(["ID", "Zona de Intervención", "Ítems", "Metros Lineales", "Próximas Tareas", "Foto"])
+        # Encabezado actualizado
+        ws.append(["ID", "Tipo de Informe", "Sede", "Repuestos Usados", "Repuestos a Cotizar", "Fecha", "Imagen"])
 
-        row_index = 2  # Comienza después del encabezado
+        row_index = 2 
 
         for row in rows:
-            id_registro, zona, items, metros, tareas, foto_base64 = row
-            ws.append([id_registro, zona, items, metros, tareas, ""])  # celda para imagen
+            id_registro, tipo, sede, usados, cotizar, fecha = row
+            fecha_str = fecha.strftime('%d/%m/%Y %H:%M') if fecha else ""
+            
+            # Escribir datos de texto
+            ws.append([id_registro, tipo, sede, usados, cotizar, fecha_str, ""])
 
-            if foto_base64:
+            # 2. Lógica para obtener la PRIMERA foto de la tabla fotos_registro para este registro
+            cursor.execute("SELECT imagen_base64 FROM fotos_registro WHERE id_registro = %s LIMIT 1", (id_registro,))
+            foto_result = cursor.fetchone()
+            
+            if foto_result and foto_result[0]:
                 try:
-                    header, base64_data = foto_base64.split(',', 1) if ',' in foto_base64 else ('', foto_base64)
+                    foto_base64 = foto_result[0]
+                    # Limpiar el encabezado base64 si existe
+                    if ',' in foto_base64:
+                        base64_data = foto_base64.split(',', 1)[1]
+                    else:
+                        base64_data = foto_base64
+                    
                     image_data = base64.b64decode(base64_data)
                     img = Image.open(io.BytesIO(image_data))
-                    img.thumbnail((120, 120))  # redimensiona para celda
+                    
+                    # Redimensionar para que quepa en la celda de Excel
+                    img.thumbnail((120, 120))
                     image_io = io.BytesIO()
                     img.save(image_io, format='PNG')
                     image_io.seek(0)
 
                     img_excel = ExcelImage(image_io)
-                    img_excel.anchor = f"F{row_index}"
+                    # La columna G es la 7ma columna (donde pusimos "Imagen")
+                    img_excel.anchor = f"G{row_index}"
                     ws.add_image(img_excel)
 
-                    # Ajustar altura de fila
-                    ws.row_dimensions[row_index].height = 90
+                    # Ajustar altura de la fila para que se vea la imagen
+                    ws.row_dimensions[row_index].height = 95
                 except Exception as img_err:
-                    print(f"Error al procesar imagen para registro {id_registro}: {img_err}")
+                    print(f"Error procesando imagen del registro {id_registro}: {img_err}")
 
             row_index += 1
 
         # Ajuste de anchos de columnas
-        ws.column_dimensions['A'].width = 12  # ID
-        ws.column_dimensions['B'].width = 30  # Zona de intervención
-        ws.column_dimensions['C'].width = 25  # Ítems
-        ws.column_dimensions['D'].width = 20  # Metros lineales
-        ws.column_dimensions['E'].width = 35  # Próximas tareas
-        ws.column_dimensions['F'].width = 18  # Imagen
+        ws.column_dimensions['A'].width = 8   # ID
+        ws.column_dimensions['B'].width = 25  # Tipo
+        ws.column_dimensions['C'].width = 20  # Sede
+        ws.column_dimensions['D'].width = 30  # Usados
+        ws.column_dimensions['E'].width = 30  # Cotizar
+        ws.column_dimensions['F'].width = 20  # Fecha
+        ws.column_dimensions['G'].width = 20  # Imagen
 
         output = io.BytesIO()
         wb.save(output)
         output.seek(0)
 
         return send_file(output,
-                         download_name="registros_bitacora.xlsx",
+                         download_name=f"Bitacora_Proyecto_{project_id}.xlsx",
                          as_attachment=True,
                          mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
     except Exception as e:
-        print(f"Error al exportar: {e}")
-        return "Error al exportar", 500
+        print(f"Error al exportar Excel: {e}")
+        traceback.print_exc()
+        return f"Error al exportar: {e}", 500
     finally:
         if conn:
             conn.close()

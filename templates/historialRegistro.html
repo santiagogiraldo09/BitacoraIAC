@@ -90,6 +90,11 @@
             <button type="submit" class="back-button" style="margin-left: 10px;">
                 <i class="fas fa-file-excel"></i> Exportar registros seleccionados a Excel
             </button>
+            <a href="{{ url_for('exportar_pdf', project_id=project_id) }}" 
+            class="back-button" 
+            style="background-color: #FFAF33; text-decoration: none; display: inline-block;">
+                <i class="fas fa-file-pdf"></i> Descargar Reporte PDF
+            </a>
         </div>
 
         <div id="project-records" class="records-container">
