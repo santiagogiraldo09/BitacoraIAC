@@ -63,23 +63,34 @@
         </div>
 
         <!-- Formulario de exportación -->
-        <form method="POST" action="/exportar-proyectos-excel">
-            <div class="centrar" style="text-align: center; margin-bottom: 15px;">
-                <label><input type="checkbox" id="select-all-projects"> Seleccionar todos</label>
-                <button type="submit" class="back-button" style="margin-left: 10px;">
-                    <i class="fas fa-file-excel"></i> Exportar proyectos seleccionados a Excel
+        <form id="export-form" method="POST" action="/exportar-proyectos-excel">
+            <div class="intro-text" style="margin-bottom: 10px;">
+                <p style="font-size: 0.9em; color: #666;">Selecciona los proyectos que deseas exportar y elige el formato:</p>
+            </div>
+
+            <div class="centrar" style="margin-bottom: 20px;">
+                <label style="display: block; margin-bottom: 10px;">
+                    <input type="checkbox" id="select-all-projects"> Seleccionar todos
+                </label>
+                
+                <button type="button" onclick="submitForm('/exportar-proyectos-excel')" class="back-button" style="margin-right: 10px;">
+                    <i class="fas fa-file-excel"></i> Exportar a Excel
+                </button>
+
+                <button type="button" onclick="submitForm('/exportar-proyectos-pdf')" class="back-button">
+                    <i class="fas fa-file-pdf"></i> Exportar a PDF
                 </button>
             </div>
 
-            <!-- Lista de proyectos con checkbox -->
             <div class="records-container">
                 {% for project in db_projects %}
-                <label class="project-checkbox-container">
-                    <input type="checkbox" name="project_ids" value="{{ project.id_proyecto }}" class="project-checkbox">
-                    <div class="record-button" onclick="redirectToProjectDetails('{{ project.id_proyecto }}', '{{ project.name }}')">
-                        {{ project.name }}<br><small>Inicio: {{ project.fecha_inicio }}</small>
+                <div class="project-checkbox-container" style="display: flex; align-items: center; margin-bottom: 10px; background: #fff; padding: 10px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    <input type="checkbox" name="project_ids" value="{{ project.id_proyecto }}" class="project-checkbox" style="margin-right: 15px; transform: scale(1.5);">
+                    <div class="record-button" style="flex-grow: 1; cursor: pointer; margin-bottom: 0;" onclick="redirectToProjectDetails('{{ project.id_proyecto }}', '{{ project.name }}')">
+                        <strong>{{ project.name }}</strong><br>
+                        <small>Inicio: {{ project.fecha_inicio }}</small>
                     </div>
-                </label>
+                </div>
                 {% else %}
                 <div class="no-projects">
                     <p>No tienes proyectos registrados</p>
@@ -116,6 +127,20 @@
         document.getElementById('select-all-projects')?.addEventListener('change', function () {
             document.querySelectorAll('.project-checkbox').forEach(cb => cb.checked = this.checked);
         });
+
+        function submitForm(actionUrl) {
+            const form = document.getElementById('export-form');
+            const selected = document.querySelectorAll('.project-checkbox:checked').length;
+            
+            if (selected === 0) {
+                Swal.fire('Atención', 'Por favor selecciona al menos un proyecto', 'warning');
+                return;
+            }
+            
+            form.action = actionUrl;
+            form.submit();
+        }
+
     </script>
 
 </body>

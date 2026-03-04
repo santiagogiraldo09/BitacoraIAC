@@ -9,6 +9,7 @@ from PIL import Image
 import os
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
+from reportlab.lib.utils import ImageReader
 from flask_cors import CORS
 from datetime import datetime
 from azure.storage.blob import ContentSettings
@@ -1293,6 +1294,7 @@ def exportar_proyectos_excel():
     if not project_ids:
         return "No se seleccionaron proyectos", 400
 
+    conn = None
     try:
         conn = psycopg2.connect(**POSTGRES_CONFIG)
         cursor = conn.cursor()
@@ -1305,7 +1307,7 @@ def exportar_proyectos_excel():
             except:
                 continue
 
-            # Obtener info del proyecto
+            # 1. Obtener info del proyecto
             cursor.execute("""
                 SELECT nombre_proyecto, fecha_inicio, fecha_fin, director_obra, ubicacion, coordenadas
                 FROM proyectos WHERE id_proyecto = %s
@@ -1315,74 +1317,96 @@ def exportar_proyectos_excel():
                 continue
 
             nombre, fecha_inicio, fecha_fin, director, ubicacion, coordenadas = proyecto
-            sheet_title = (nombre[:30] or f"Proyecto {pid_int}").strip()
+            # Limpiar nombre para el título de la pestaña (máximo 31 caracteres)
+            sheet_title = (nombre[:30] or f"Proyecto {pid_int}").strip().replace(":", "").replace("/", "")
             ws = wb.create_sheet(title=sheet_title)
 
-            # Encabezado de proyecto
-            ws.append(["Nombre del Proyecto:", nombre])
-            ws.append(["Fecha de Inicio:", str(fecha_inicio)])
-            ws.append(["Fecha de Finalización:", str(fecha_fin)])
-            ws.append(["Director del Proyecto:", director])
+            # Encabezado de información del proyecto
+            ws.append(["INFORMACIÓN DEL PROYECTO"])
+            ws.append(["Nombre:", nombre])
+            ws.append(["Fecha Inicio:", str(fecha_inicio)])
+            ws.append(["Director:", director])
             ws.append(["Ubicación:", ubicacion])
-            ws.append(["Coordenadas:", coordenadas])
-            ws.append([])
+            ws.append([]) # Espacio en blanco
 
-            # Encabezado de registros
-            ws.append(["ID", "Zona de Intervención", "Ítems Instalados", "Metros Lineales", "Próximas Tareas", "Foto"])
+            # 2. Encabezado de registros (Tabla registrosiac)
+            ws.append(["ID", "Tipo de Informe", "Sede", "Repuestos Usados", "Repuestos a Cotizar", "Fecha", "Foto"])
 
-            # Obtener registros
+            # 3. Obtener registros de la NUEVA tabla
             cursor.execute("""
-                SELECT id_registro, zona_intervencion, items, metros_lineales, proximas_tareas, foto_base64
-                FROM registrosbitacoraeqing
+                SELECT id_registro, tipo_informe, sede, repuestos_usados, repuestos_cotizar, fecha_registro
+                FROM registrosiac
                 WHERE id_proyecto = %s
-                ORDER BY id_registro DESC
+                ORDER BY fecha_registro DESC
             """, (pid_int,))
             registros = cursor.fetchall()
 
-            row_index = 9
-            for registro in registros:
-                idr, zona, items, metros, tareas, foto = registro
-                ws.append([idr, zona, items, metros, tareas, ""])
+            row_index = 8 # Punto de inicio para los datos
+            for reg in registros:
+                id_reg, tipo, sede, usados, cotizar, fecha = reg
+                fecha_str = fecha.strftime('%d/%m/%Y %H:%M') if fecha else ""
+                
+                # Escribimos los datos de texto (dejamos la columna G vacía para la foto)
+                ws.append([id_reg, tipo, sede, usados, cotizar, fecha_str, ""])
 
-                if foto:
+                # 4. BUSCAR LA FOTO en la tabla fotos_registro
+                cursor.execute("""
+                    SELECT imagen_base64 FROM fotos_registro 
+                    WHERE id_registro = %s LIMIT 1
+                """, (id_reg,))
+                foto_res = cursor.fetchone()
+
+                if foto_res and foto_res[0]:
                     try:
-                        header, base64_data = foto.split(',', 1) if ',' in foto else ('', foto)
-                        img_data = base64.b64decode(base64_data)
-                        img = Image.open(io.BytesIO(img_data))
+                        foto_data = foto_res[0]
+                        if ',' in foto_data:
+                            base64_data = foto_data.split(',', 1)[1]
+                        else:
+                            base64_data = foto_data
+                        
+                        img_bytes = base64.b64decode(base64_data)
+                        img = Image.open(io.BytesIO(img_bytes))
+                        
+                        # Ajustar tamaño para la celda
                         img.thumbnail((120, 120))
                         img_io = io.BytesIO()
                         img.save(img_io, format='PNG')
                         img_io.seek(0)
 
                         img_excel = ExcelImage(img_io)
-                        img_excel.anchor = f"F{row_index}"
+                        # La foto va en la columna G (7ma columna)
+                        img_excel.anchor = f"G{row_index}"
                         ws.add_image(img_excel)
 
-                        ws.row_dimensions[row_index].height = 90
+                        # Aumentar altura de fila para que se vea la foto
+                        ws.row_dimensions[row_index].height = 95
                     except Exception as e:
-                        print(f"Error en imagen de registro {idr}: {e}")
+                        print(f"Error procesando imagen del registro {id_reg}: {e}")
+
                 row_index += 1
 
-            # Ajustes de columnas
-            ws.column_dimensions['A'].width = 12
-            ws.column_dimensions['B'].width = 30
-            ws.column_dimensions['C'].width = 25
-            ws.column_dimensions['D'].width = 20
-            ws.column_dimensions['E'].width = 35
-            ws.column_dimensions['F'].width = 18
+            # Ajustes de ancho de columnas para mejor lectura
+            ws.column_dimensions['A'].width = 8   # ID
+            ws.column_dimensions['B'].width = 20  # Tipo
+            ws.column_dimensions['C'].width = 15  # Sede
+            ws.column_dimensions['D'].width = 30  # Usados
+            ws.column_dimensions['E'].width = 30  # Cotizar
+            ws.column_dimensions['F'].width = 18  # Fecha
+            ws.column_dimensions['G'].width = 20  # Foto
 
-        # Generar archivo
+        # 5. Generar y enviar el archivo
         output = io.BytesIO()
         wb.save(output)
         output.seek(0)
 
         return send_file(output,
-                         download_name="proyectos_exportados.xlsx",
+                         download_name="reporte_consolidado_proyectos.xlsx",
                          as_attachment=True,
                          mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
     except Exception as e:
-        print(f"Error exportando proyectos: {e}")
-        return "Error interno al exportar", 500
+        print(f"Error crítico exportando proyectos: {e}")
+        return f"Error al exportar: {e}", 500
     finally:
         if conn:
             conn.close()
@@ -1392,9 +1416,9 @@ def exportar_proyectos_pdf():
     project_ids = request.form.getlist('project_ids')
     
     if not project_ids:
-        flash("No se seleccionaron proyectos", "error")
-        return redirect(url_for('history'))
+        return "No se seleccionaron proyectos", 400
 
+    conn = None
     try:
         conn = psycopg2.connect(**POSTGRES_CONFIG)
         cursor = conn.cursor()
@@ -1403,56 +1427,90 @@ def exportar_proyectos_pdf():
         w, h = letter
 
         for pid in project_ids:
-            # Info del Proyecto
+            # 1. Info del Proyecto
             cursor.execute("""
-                SELECT nombre_proyecto, fecha_inicio, fecha_fin, director_obra, ubicacion 
+                SELECT nombre_proyecto, director_obra, ubicacion 
                 FROM proyectos WHERE id_proyecto = %s
             """, (pid,))
             proyecto = cursor.fetchone()
             if not proyecto: continue
 
-            # Dibujar encabezado de página para el proyecto
+            # Encabezado del proyecto
             p.setFont("Helvetica-Bold", 16)
+            p.setFillColorRGB(0.98, 0.68, 0.2) # Color Naranja #FFAF33 aprox
             p.drawString(50, h - 50, f"PROYECTO: {proyecto[0]}")
+            p.line(50, h - 55, 550, h - 55)
+            
             p.setFont("Helvetica", 10)
-            p.drawString(50, h - 65, f"Director: {proyecto[3]} | Ubicación: {proyecto[4]}")
-            p.line(50, h - 70, 550, h - 70)
+            p.setFillColorRGB(0, 0, 0)
+            p.drawString(50, h - 70, f"Director: {proyecto[1]} | Ubicación: {proyecto[2]}")
 
-            # Obtener Registros de la nueva tabla registrosiac
+            # 2. Obtener Registros
             cursor.execute("""
-                SELECT tipo_informe, sede, repuestos_usados, repuestos_cotizar, fecha_registro
+                SELECT id_registro, tipo_informe, sede, repuestos_usados, repuestos_cotizar, fecha_registro
                 FROM registrosiac WHERE id_proyecto = %s ORDER BY fecha_registro DESC
             """, (pid,))
             registros = cursor.fetchall()
 
             y = h - 100
             for reg in registros:
-                if y < 100:
+                id_reg, tipo, sede, usados, cotizar, fecha = reg
+                
+                # Verificar espacio (si queda menos de 200px, nueva página)
+                if y < 200: 
                     p.showPage()
                     y = h - 50
-                
-                fecha_str = reg[4].strftime('%d/%m/%Y %H:%M') if reg[4] else "S/F"
+
+                # Datos del registro
+                fecha_str = fecha.strftime('%d/%m/%Y %H:%M') if fecha else "S/F"
                 p.setFont("Helvetica-Bold", 11)
-                p.drawString(60, y, f"Registro - {fecha_str}")
+                p.drawString(60, y, f"Registro #{id_reg} - {fecha_str}")
                 y -= 15
                 p.setFont("Helvetica", 10)
-                p.drawString(70, y, f"Tipo: {reg[0]} | Sede: {reg[1]}")
+                p.drawString(70, y, f"Tipo: {tipo} | Sede: {sede}")
                 y -= 15
-                p.drawString(70, y, f"Repuestos Usados: {reg[2]}")
+                p.drawString(70, y, f"Repuestos Usados: {usados}")
                 y -= 15
-                p.drawString(70, y, f"A cotizar: {reg[3]}")
-                y -= 25
-                p.line(70, y + 10, 500, y + 10) # Separador pequeño
+                p.drawString(70, y, f"A cotizar: {cotizar}")
+                y -= 10
 
-            p.showPage() # Nueva página por cada proyecto
+                # 3. BUSCAR FOTO para este registro
+                cursor.execute("SELECT imagen_base64 FROM fotos_registro WHERE id_registro = %s LIMIT 1", (id_reg,))
+                foto_res = cursor.fetchone()
+
+                if foto_res and foto_res[0]:
+                    try:
+                        foto_data = foto_res[0]
+                        if ',' in foto_data:
+                            base64_data = foto_data.split(',', 1)[1]
+                        else:
+                            base64_data = foto_data
+                        
+                        img_bytes = base64.b64decode(base64_data)
+                        img_io = io.BytesIO(img_bytes)
+                        img_reader = ImageReader(img_io)
+                        
+                        # Dibujar imagen (x, y, ancho, alto)
+                        p.drawImage(img_reader, 70, y - 100, width=120, height=90, preserveAspectRatio=True)
+                        y -= 110 # Espacio que ocupa la imagen
+                    except Exception as e:
+                        print(f"Error imagen en PDF: {e}")
+                        y -= 10
+                
+                y -= 20
+                p.setStrokeColorRGB(0.8, 0.8, 0.8)
+                p.line(70, y + 10, 500, y + 10) # Línea divisoria
+                y -= 10
+
+            p.showPage() # Nueva página por proyecto
 
         p.save()
         buffer.seek(0)
-        return send_file(buffer, as_attachment=True, download_name="reporte_proyectos.pdf", mimetype='application/pdf')
+        return send_file(buffer, as_attachment=True, download_name="Reporte_Proyectos.pdf", mimetype='application/pdf')
 
     except Exception as e:
-        print(f"Error PDF Proyectos: {e}")
-        return str(e), 500
+        print(f"Error crítico PDF: {e}")
+        return f"Error: {e}", 500
     finally:
         if conn: conn.close()
 
