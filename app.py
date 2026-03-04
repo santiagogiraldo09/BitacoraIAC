@@ -887,61 +887,47 @@ def historialregistro():
         conn = psycopg2.connect(**POSTGRES_CONFIG)
         cursor = conn.cursor()
 
-        # 1. Obtener los registros principales (sin cambios aquí)
+        # SELECT con 6 columnas (índices 0 al 5)
         cursor.execute("""
-            SELECT id_registro, zona_intervencion, items, metros_lineales, proximas_tareas
-            FROM registrosbitacoraeqing
+            SELECT id_registro, tipo_informe, sede, repuestos_usados, repuestos_cotizar, fecha_registro
+            FROM registrosiac
             WHERE id_proyecto = %s
             ORDER BY id_registro DESC
         """, (project_id,))
         
         registros_principales = cursor.fetchall()
 
-        # 2. Para cada registro, obtener sus fotos y videos CON SUS DESCRIPCIONES
         for row in registros_principales:
             id_registro = row[0]
             
-            # --- LÓGICA DE FOTOS ACTUALIZADA ---
-            # Ahora seleccionamos también la columna 'description'
+            # Obtener Fotos
             cursor.execute("SELECT imagen_base64, description FROM fotos_registro WHERE id_registro = %s", (id_registro,))
-            fotos = []
-            for item in cursor.fetchall():
-                fotos.append({
-                    'file_data': item[0],   # El archivo en base64
-                    'description': item[1]  # La nueva descripción
-                })
+            fotos = [{'file_data': item[0], 'description': item[1]} for item in cursor.fetchall()]
             
-            # --- LÓGICA DE VIDEOS ACTUALIZADA ---
-            # Hacemos lo mismo para los videos
+            # Obtener Videos
             cursor.execute("SELECT video_base64, description FROM videos_registro WHERE id_registro = %s", (id_registro,))
-            videos = []
-            for item in cursor.fetchall():
-                videos.append({
-                    'file_data': item[0],   # El video en base64
-                    'description': item[1]  # La nueva descripción
-                })
+            videos = [{'file_data': item[0], 'description': item[1]} for item in cursor.fetchall()]
 
+            # Mapeo cuidadoso de índices
             registros.append({
                 'id': id_registro,
-                'zona_intervencion': row[1],
-                'items_value': row[2],
-                'metros_lineales': row[3],
-                'proximas_tareas': row[4],
-                'fotos': fotos,   # Ahora es una lista de objetos
-                'videos': videos  # Ahora es una lista de objetos
+                'tipo_informe': row[1],
+                'sede': row[2],
+                'repuestos_usados': row[3],
+                'repuestos_cotizar': row[4],
+                'fecha': row[5].strftime('%d/%m/%Y %H:%M') if row[5] else "Sin fecha",
+                'fotos': fotos,
+                'videos': videos
             })
 
     except Exception as e:
-        print(f"Error al obtener registros: {str(e)}")
-        flash("Error al cargar el historial de registros.", "error")
+        print(f"Error detallado: {str(e)}")
+        flash(f"Error al cargar el historial: {str(e)}", "error")
     finally:
         if conn:
             conn.close()
     
-    return render_template('historialRegistro.html',
-                           registros=registros,
-                           project_name=project_name,
-                           project_id=project_id)
+    return render_template('historialRegistro.html', registros=registros, project_name=project_name, project_id=project_id)
 
 @app.route('/disciplinerecords')
 def disciplinerecords():

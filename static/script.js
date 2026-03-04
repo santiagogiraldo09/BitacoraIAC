@@ -43,7 +43,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Listeners para adjuntar archivos
     document.getElementById('file-input').addEventListener('change', handleFileUpload);
-    document.getElementById('video-file-input').addEventListener('change', handleVideoUpload);
+    //document.getElementById('video-file-input').addEventListener('change', handleVideoUpload);
+    const videoInput = document.getElementById('video-file-input');
+    if (videoInput) {
+        videoInput.addEventListener('change', handleVideoUpload);
+    } else {
+        console.warn("Aviso: El elemento 'video-file-input' no se encontró en este HTML.");
+    }
 
     // Listeners para grabación de audio por campo
     document.querySelectorAll('.record-btn').forEach(button => {

@@ -201,7 +201,7 @@ button {
     background-color: #f3f3f3;
 }
 .bottom-button {
-    background-color: #FF6600;
+    background-color: #FFAF33;
     color: white;
     padding: 10px 15px;
     border-radius: 10px;
@@ -256,7 +256,7 @@ button {
     width: 60px;
     height: 60px;
     border-radius: 50%;
-    background-color: #FF6600;
+    background-color: #FFAF33;
     color: white;
     font-size: 24px;
     border: none;
@@ -352,7 +352,7 @@ button {
 /* 4. Estilos específicos que ya tenías (y están bien) */
 .record-btn {
     background-color: transparent;
-    color: #FF6600; /* Verde */
+    color: #FFAF33; /* Verde */
     font-size: 24px;
 }
 .record-btn:hover {
