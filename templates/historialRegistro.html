@@ -85,39 +85,29 @@
             </button>
         </div>
 
-        <form id="export-form" method="POST" action="/exportar-registros-excel">
-            <input type="hidden" name="project_id" value="{{ project_id }}">
+        <div class="centrar" style="margin-bottom: 15px;">
+            <!--
+            <label><input type="checkbox" id="select-all"> Seleccionar todos</label>
+            <button type="submit" class="back-button" style="margin-left: 10px;">
+                <i class="fas fa-file-excel"></i> Exportar registros seleccionados a Excel
+            </button>
+            <a href="{{ url_for('exportar_pdf', project_id=project_id) }}" 
+            class="back-button" 
+            style="background-color: #FFAF33; text-decoration: none; display: inline-block;">
+                <i class="fas fa-file-pdf"></i> Descargar Reporte PDF
+            </a> -->
+        </div>
 
-            <div class="centrar" style="margin-bottom: 20px; background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-                <label style="display: block; margin-bottom: 10px;">
-                    <input type="checkbox" id="select-all"> <strong>Seleccionar todos</strong>
-                </label>
-                
-                <div style="display: flex; justify-content: center; gap: 10px; flex-wrap: wrap;">
-                    <button type="submit" class="back-button" style="background-color: #28a745;">
-                        <i class="fas fa-file-excel"></i> Exportar Excel
-                    </button>
+        <div id="project-records" class="records-container">
+            <form id="export-form" method="POST" action="/exportar-registros-excel">
+                <input type="hidden" name="project_id" value="{{ project_id }}">
 
-                    <a href="{{ url_for('exportar_pdf', project_id=project_id) }}" 
-                       class="back-button" 
-                       style="background-color: #FFAF33; text-decoration: none; display: inline-block;">
-                        <i class="fas fa-file-pdf"></i> Descargar Reporte PDF
-                    </a>
-                </div>
-                <p style="font-size: 0.85em; color: #666; margin-top: 10px;">
-                    *Si no seleccionas nada, se exportarán todos los registros del proyecto.
-                </p>
-            </div>
-
-            <div id="project-records" class="records-container">
                 {% if registros %}
                     {% for registro in registros %}
                     <div class="registro-card">
-                        <div class="registro-header" style="display: flex; align-items: center; justify-content: space-between;">
-                            <label style="display: flex; align-items: center; cursor: pointer;">
-                                <input type="checkbox" name="registro_ids" value="{{ registro.id_registro }}" class="registro-checkbox" style="margin-right: 10px; transform: scale(1.2);">
-                                <strong>Registro #{{ registro.id_registro }}</strong>
-                            </label>
+                        <div class="registro-header">
+                            <input type="checkbox" name="registro_ids" value="{{ registro.id }}" class="registro-checkbox">
+                            
                             <span class="fecha">{{ registro.fecha }}</span>
                         </div>
                         
@@ -143,19 +133,18 @@
                     </div>
                     {% endfor %}
                 {% else %}
-                    <div style="text-align: center; padding: 20px;">
-                        <p>No hay registros para este proyecto</p>
-                    </div>
+                    <p>No hay registros para este proyecto</p>
                 {% endif %}
-            </div>
-        </form>
+            </form>
 
-        <script>
-            document.getElementById('select-all').addEventListener('change', function () {
-                const checkboxes = document.querySelectorAll('.registro-checkbox');
-                checkboxes.forEach(cb => cb.checked = this.checked);
-            });
-        </script>
+            <script>
+                // Seleccionar todos los registros
+                document.getElementById('select-all').addEventListener('change', function () {
+                    const checkboxes = document.querySelectorAll('.registro-checkbox');
+                    checkboxes.forEach(cb => cb.checked = this.checked);
+                });
+            </script>
+        </div>
 
         <div class="bottom-menu">
             <a href="{{ url_for('registros') }}" class="bottom-button"><i class="fas fa-home"></i></a>

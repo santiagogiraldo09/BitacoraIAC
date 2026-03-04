@@ -10,6 +10,22 @@
     <!-- SweetAlert para mensajes -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
+
+        /* Estilos para mantener el layout fijo y con scroll */
+        html, body {
+            height: 100%;
+            margin: 0;
+            overflow: hidden; /* Evita el scroll doble en toda la página */
+        }
+
+        .main-container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh; /* Ocupa todo el alto de la pantalla */
+            max-width: 450px; /* O el ancho que prefieras */
+            margin: 0 auto;
+        }
+
         .record-details {
             background-color: #f9f9f9;
             border-radius: 8px;
@@ -24,10 +40,26 @@
         .record-field {
             margin-bottom: 8px;
         }
+
+        /* Área de contenido con scroll */
+        .scrollable-content {
+            flex-grow: 1;
+            overflow-y: auto; /* Solo esta parte tendrá scroll */
+            padding: 0 15px 80px 15px; /* Padding inferior para que el menú no tape el último proyecto */
+        }
+
         .record-field label {
             font-weight: bold;
             margin-right: 5px;
         }
+
+        /* Menú inferior fijo */
+        .bottom-menu {
+            flex-shrink: 0;
+            position: relative; /* Cambiado a relativo dentro del flex para que no flote */
+            width: 100%;
+        }
+
         .back-button {
             background-color: #FFAF33;
             color: white;
@@ -60,44 +92,46 @@
         <div class="intro-text">
             <h2>Mis Proyectos</h2>
             <p>Selecciona un proyecto para ver su historial</p>
-        </div>
-
-        <!-- Formulario de exportación -->
-        <form id="export-form" method="POST" action="/exportar-proyectos-excel">
             <div class="intro-text" style="margin-bottom: 10px;">
-                <p style="font-size: 0.9em; color: #666;">Selecciona los proyectos que deseas exportar y elige el formato:</p>
-            </div>
+                    <p style="font-size: 0.9em; color: #666;">Selecciona los proyectos que deseas exportar y elige el formato:</p>
+                </div>
 
-            <div class="centrar" style="margin-bottom: 20px;">
-                <label style="display: block; margin-bottom: 10px;">
-                    <input type="checkbox" id="select-all-projects"> Seleccionar todos
-                </label>
+                <div class="centrar" style="margin-bottom: 20px;">
+                    <label style="display: block; margin-bottom: 10px;">
+                        <input type="checkbox" id="select-all-projects"> Seleccionar todos
+                    </label>
+                    
+                    <button type="button" onclick="submitForm('/exportar-proyectos-excel')" class="back-button" style="margin-right: 10px;">
+                        <i class="fas fa-file-excel"></i> Exportar a Excel
+                    </button>
+
+                    <button type="button" onclick="submitForm('/exportar-proyectos-pdf')" class="back-button">
+                        <i class="fas fa-file-pdf"></i> Exportar a PDF
+                    </button>
+                </div>
+        </div>
+        <div class="scrollable-content">
+            <!-- Formulario de exportación -->
+            <form id="export-form" method="POST" action="/exportar-proyectos-excel">
                 
-                <button type="button" onclick="submitForm('/exportar-proyectos-excel')" class="back-button" style="margin-right: 10px;">
-                    <i class="fas fa-file-excel"></i> Exportar a Excel
-                </button>
 
-                <button type="button" onclick="submitForm('/exportar-proyectos-pdf')" class="back-button">
-                    <i class="fas fa-file-pdf"></i> Exportar a PDF
-                </button>
-            </div>
-
-            <div class="records-container">
-                {% for project in db_projects %}
-                <div class="project-checkbox-container" style="display: flex; align-items: center; margin-bottom: 10px; background: #fff; padding: 10px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                    <input type="checkbox" name="project_ids" value="{{ project.id_proyecto }}" class="project-checkbox" style="margin-right: 15px; transform: scale(1.5);">
-                    <div class="record-button" style="flex-grow: 1; cursor: pointer; margin-bottom: 0;" onclick="redirectToProjectDetails('{{ project.id_proyecto }}', '{{ project.name }}')">
-                        <strong>{{ project.name }}</strong><br>
-                        <small>Inicio: {{ project.fecha_inicio }}</small>
+                <div class="records-container">
+                    {% for project in db_projects %}
+                    <div class="project-checkbox-container" style="display: flex; align-items: center; margin-bottom: 10px; background: #fff; padding: 10px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                        <input type="checkbox" name="project_ids" value="{{ project.id_proyecto }}" class="project-checkbox" style="margin-right: 15px; transform: scale(1.5);">
+                        <div class="record-button" style="flex-grow: 1; cursor: pointer; margin-bottom: 0;" onclick="redirectToProjectDetails('{{ project.id_proyecto }}', '{{ project.name }}')">
+                            <strong>{{ project.name }}</strong><br>
+                            <small>Inicio: {{ project.fecha_inicio }}</small>
+                        </div>
                     </div>
+                    {% else %}
+                    <div class="no-projects">
+                        <p>No tienes proyectos registrados</p>
+                    </div>
+                    {% endfor %}
                 </div>
-                {% else %}
-                <div class="no-projects">
-                    <p>No tienes proyectos registrados</p>
-                </div>
-                {% endfor %}
-            </div>
-        </form>
+            </form>
+        </div>
 
         <!-- Menú inferior -->
         <div class="bottom-menu">
