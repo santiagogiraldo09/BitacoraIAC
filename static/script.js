@@ -25,7 +25,7 @@ let contadorCalidad = 0;
 let activeWakeWordRecognizer;
 // Variable para el reconocedor de campo actual
 let fieldRecognizer;
-
+let globalRecognizer = null; // El único dueño del micrófono
 let cameraActive = false;
 
 // =================================================================
@@ -63,54 +63,39 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 async function iniciarModoEspera() {
-    console.log("👂 Modo espera activado: Escuchando palabra clave...");
-    
+    console.log("👂 Modo espera activado...");
     const speechConfig = SpeechSDK.SpeechConfig.fromSubscription("999fcb4d3f34436ab454ec47920febe0", "centralus");
     speechConfig.speechRecognitionLanguage = "es-CO";
-    
     const audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
-    activeWakeWordRecognizer = new SpeechSDK.SpeechRecognizer(speechConfig, audioConfig);
+    
+    globalRecognizer = new SpeechSDK.SpeechRecognizer(speechConfig, audioConfig);
 
-    activeWakeWordRecognizer.recognizing = (s, e) => {
-        const transcripcionParcial = e.result.text.toLowerCase();
-        
-        // Definimos la(s) palabra(s) clave
-        if (transcripcionParcial.includes("bitácora") || transcripcionParcial.includes("oye bitácora")) {
-            console.log("🚀 Palabra clave detectada");
-            
-            // Detenemos la escucha de despertar para evitar conflictos
-            activeWakeWordRecognizer.stopContinuousRecognitionAsync();
-            
-            // La aplicación "habla" para confirmar
-            responderUsuario();
+    globalRecognizer.recognizing = (s, e) => {
+        const text = e.result.text.toLowerCase();
+        if (text.includes("bitácora")) {
+            console.log("🚀 Palabra clave detectada.");
+            // 1. Apagamos y LIBERAMOS el micrófono inmediatamente
+            globalRecognizer.stopContinuousRecognitionAsync(() => {
+                globalRecognizer.close(); 
+                globalRecognizer = null;
+                responderUsuario(); // Ahora Gonzalo puede hablar sin interferencias
+            });
         }
     };
-
-    activeWakeWordRecognizer.startContinuousRecognitionAsync();
+    globalRecognizer.startContinuousRecognitionAsync();
 }
 
 async function responderUsuario() {
     const speechConfig = SpeechSDK.SpeechConfig.fromSubscription("999fcb4d3f34436ab454ec47920febe0", "centralus");
-    speechConfig.speechSynthesisLanguage = "es-CO";
-    speechConfig.speechSynthesisVoiceName = "es-CO-GonzaloNeural";
-
     const synthesizer = new SpeechSDK.SpeechSynthesizer(speechConfig);
     
-    const textoAResponder = "Te escucho. ¿Cuál es el tipo de informe?";
-    
-    synthesizer.speakTextAsync(textoAResponder, 
-        result => {
-            if (result.reason === SpeechSDK.ResultReason.SynthesizingAudioCompleted) {
-                // Una vez que termina de hablar, activamos el primer campo automáticamente
-                activarPrimerCampo();
-            }
+    // Gonzalo habla
+    synthesizer.speakTextAsync("Te escucho. ¿Cuál es el tipo de informe?", result => {
+        if (result.reason === SpeechSDK.ResultReason.SynthesizingAudioCompleted) {
             synthesizer.close();
-        },
-        error => {
-            console.error("Error al hablar:", error);
-            synthesizer.close();
+            activarPrimerCampo(); // Solo cuando Gonzalo termine, abrimos el mic de nuevo
         }
-    );
+    });
 }
 
 function activarPrimerCampo() {
@@ -1061,17 +1046,38 @@ function handleVideoUpload(event) {
 //          GRABACIÓN DE AUDIO POR CAMPO
 // =================================================================
 async function startFieldRecording(btn) {
-    if (isFieldRecording) return;
-    
+    // 1. Evitar que se dispare dos veces si ya está grabando este campo
+    if (isFieldRecording && currentTargetInput === document.getElementById(btn.dataset.targetInput)) return;
+
+    // 2. LIMPIEZA RADICAL: Si hay un grabador activo, lo matamos y liberamos hardware
+    if (globalRecognizer) {
+        try {
+            await new Promise((resolve) => {
+                globalRecognizer.stopContinuousRecognitionAsync(() => {
+                    globalRecognizer.close(); // Libera el hardware del micrófono
+                    globalRecognizer = null;
+                    resolve();
+                }, (err) => {
+                    console.warn("Aviso al cerrar grabador previo:", err);
+                    resolve();
+                });
+            });
+        } catch (e) {
+            console.error("Error en limpieza de micrófono:", e);
+        }
+    }
+
+    // 3. Configuración de Identificadores y UI
     const targetInputId = btn.dataset.targetInput;
     currentTargetInput = document.getElementById(targetInputId);
     const stopButton = document.querySelector(`.stop-btn[data-target-input='${targetInputId}']`);
     
+    // Configuración de Azure
     const speechConfig = SpeechSDK.SpeechConfig.fromSubscription("999fcb4d3f34436ab454ec47920febe0", "centralus");
     speechConfig.speechRecognitionLanguage = "es-CO";
     const audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
     
-    const recognizer = new SpeechSDK.SpeechRecognizer(speechConfig, audioConfig);
+    globalRecognizer = new SpeechSDK.SpeechRecognizer(speechConfig, audioConfig);
     
     isFieldRecording = true;
     btn.style.display = 'none';
@@ -1079,121 +1085,109 @@ async function startFieldRecording(btn) {
     currentTargetInput.classList.add('recording-active');
     currentTargetInput.placeholder = "Escuchando...";
 
-    recognizer.recognizing = (s, e) => {
+    // 4. EVENTO: RECOGNIZING (Comandos en tiempo real)
+    globalRecognizer.recognizing = (s, e) => {
         const partialText = e.result.text.toLowerCase();
         
-        // --- COMANDO: REPETIR REGISTRO ---
-        if (partialText.includes("repetir registro")) {
-            console.log("🔄 Comando 'Repetir registro' detectado.");
-            
-            // Detenemos el reconocimiento actual
-            recognizer.stopContinuousRecognitionAsync();
-            
-            // Limpiamos el campo de texto y notificamos al usuario
-            currentTargetInput.value = "";
-            hablarTexto("Entendido, borrando campo. Repite lo que quieres registrar.");
-            
-            // Reiniciamos la visualización y volvemos a activar el mismo campo
-            finalizarVisualizacionCampo(btn, stopButton);
-            setTimeout(() => {
-                startFieldRecording(btn);
-            }, 1500); 
-        }
-
-        // --- COMANDO: SIGUIENTE CAMPO ---
-        else if (partialText.includes("siguiente campo")) {
-            console.log("⏭️ Comando detectado: Saltando al siguiente campo.");
-
-            // 1. Detenemos el motor de Azure para el campo actual
-            recognizer.stopContinuousRecognitionAsync();
-
-            // 2. Apagamos visualmente el micrófono y limpiamos el estado
-            if (typeof finalizarVisualizacionCampo === "function") {
+        // COMANDO: SIGUIENTE CAMPO
+        if (partialText.includes("siguiente campo")) {
+            console.log("⏭️ Saltando al siguiente campo...");
+            globalRecognizer.stopContinuousRecognitionAsync(() => {
+                globalRecognizer.close();
+                globalRecognizer = null;
                 finalizarVisualizacionCampo(btn, stopButton);
-            }
-
-            // 3. Movemos el foco al siguiente ID (usando la variable que ya tienes)
-            if (typeof irAlSiguienteCampo === "function") {
-                irAlSiguienteCampo(targetInputId);
-            }
-            
-            hablarTexto("Cambiando al siguiente campo.");
+                if (typeof irAlSiguienteCampo === "function") irAlSiguienteCampo(targetInputId);
+            });
         }
         
-        // --- COMANDO: ACTIVAR CÁMARA ---
-        else if (partialText.includes("activar cámara")) {
-            console.log("📸 Bloqueando escritura y abriendo cámara...");
-
-            // 1. Activamos el bloqueo global
-            window.cameraActive = true; 
-
-            // 2. Ejecutamos la parte visual que ya te funcionó
-            if (typeof finalizarVisualizacionCampo === "function") {
+        // COMANDO: REPETIR REGISTRO
+        else if (partialText.includes("repetir registro")) {
+            globalRecognizer.stopContinuousRecognitionAsync(() => {
+                globalRecognizer.close();
+                globalRecognizer = null;
+                currentTargetInput.value = "";
+                hablarTexto("Borrando campo. Repite ahora.");
                 finalizarVisualizacionCampo(btn, stopButton);
-            }
-
-            hablarTexto("Cámara abierta.");
-
-            // 3. Abrir la cámara
-            const cameraBtn = document.getElementById('activate-camera-btn');
-            if (cameraBtn) {
-                setTimeout(() => { cameraBtn.click(); }, 300);
-            }
+                setTimeout(() => startFieldRecording(btn), 1000); // Pequeño delay para limpiar audio
+            });
         }
 
-        // --- COMANDO: TOMAR FOTO ---
+        // COMANDO: ACTIVAR CÁMARA
+        else if (partialText.includes("activar cámara")) {
+            window.cameraActive = true; 
+            globalRecognizer.stopContinuousRecognitionAsync(() => {
+                globalRecognizer.close();
+                globalRecognizer = null;
+                finalizarVisualizacionCampo(btn, stopButton);
+                hablarTexto("Cámara abierta.");
+                const cameraBtn = document.getElementById('activate-camera-btn');
+                if (cameraBtn) setTimeout(() => cameraBtn.click(), 300);
+            });
+        }
+
+        // COMANDO: TOMAR FOTO (No cierra el mic, solo ejecuta la acción)
         else if (partialText.includes("tomar foto")) {
-            console.log("📸 Capturando fotografía...");
-            
             if (typeof takePhoto === 'function') {
                 takePhoto(); 
                 hablarTexto("Foto capturada.");
-                
-                // TRUCO TÉCNICO: Forzamos un reinicio rápido del buffer interno
-                // para que no se quede bloqueado con la frase anterior
-                e.result.text = ""; 
+                e.result.text = ""; // Limpiamos el buffer para que no se escriba
             }
         }
-        
-        /// --- COMANDO: GUARDAR REGISTRO ---
-        // Usamos "includes" con variaciones comunes para mayor seguridad
-        if (partialText.includes("guardar registro") || partialText.includes("finalizar registro")) {
-            console.log("💾 Iniciando guardado de bitácora...");
-            
-            // Aquí sí detenemos el reconocimiento para procesar el envío
-            recognizer.stopContinuousRecognitionAsync();
-            finalizarVisualizacionCampo(btn, stopButton);
-            
-            hablarTexto("Entendido");
-            
-            if (typeof saveRecord === 'function') {
-                saveRecord();
-            }
+
+        // COMANDO: GUARDAR REGISTRO
+        else if (partialText.includes("guardar registro") || partialText.includes("finalizar registro")) {
+            globalRecognizer.stopContinuousRecognitionAsync(() => {
+                globalRecognizer.close();
+                globalRecognizer = null;
+                finalizarVisualizacionCampo(btn, stopButton);
+                hablarTexto("Entendido. Guardando datos.");
+                if (typeof saveRecord === 'function') saveRecord();
+            });
         }
     };
 
-    recognizer.recognized = (s, e) => {
+    // 5. EVENTO: RECOGNIZED (Escritura de texto final)
+    globalRecognizer.recognized = (s, e) => {
+        if (!currentTargetInput) return;
+
         if (e.result.reason === SpeechSDK.ResultReason.RecognizedSpeech) {
-            // Filtramos los comandos para que no se escriban en el texto final
-            let cleanText = e.result.text.replace(/siguiente campo/gi, "");
-            cleanText = cleanText.replace(/repetir registro/gi, "");
-            cleanText = cleanText.replace(/activar cámara/gi, "");
-             cleanText = cleanText.replace(/tomar foto/gi, "");
-              cleanText = cleanText.replace(/guardar registro/gi, "")
-            .trim();
+            // Limpiamos cualquier comando de voz del texto que se va a escribir
+            let cleanText = e.result.text
+                .replace(/siguiente campo/gi, "")
+                .replace(/repetir registro/gi, "")
+                .replace(/activar cámara/gi, "")
+                .replace(/tomar foto/gi, "")
+                .replace(/guardar registro/gi, "")
+                .replace(/finalizar registro/gi, "")
+                .trim();
             
             if (cleanText) {
+                // Añadimos el texto al valor actual con un espacio
                 currentTargetInput.value += (currentTargetInput.value ? ' ' : '') + cleanText;
             }
         }
     };
 
-    recognizer.startContinuousRecognitionAsync();
+    // 6. INICIO DE ESCUCHA
+    globalRecognizer.startContinuousRecognitionAsync(
+        () => { console.log("✅ Grabador iniciado en: " + targetInputId); },
+        (err) => { 
+            console.error("❌ Error al iniciar grabación:", err);
+            isFieldRecording = false;
+        }
+    );
 
+    // 7. BOTÓN STOP MANUAL
     stopButton.onclick = () => {
-        recognizer.stopContinuousRecognitionAsync();
-        finalizarVisualizacionCampo(btn, stopButton);
-        if (typeof iniciarModoEspera === 'function') iniciarModoEspera();
+        if (globalRecognizer) {
+            globalRecognizer.stopContinuousRecognitionAsync(() => {
+                globalRecognizer.close();
+                globalRecognizer = null;
+                finalizarVisualizacionCampo(btn, stopButton);
+                // Volvemos al modo "Oye Bitácora"
+                if (typeof iniciarModoEspera === 'function') iniciarModoEspera();
+            });
+        }
     };
 }
 
