@@ -32,6 +32,7 @@ import base64
 import uuid
 import requests
 import psycopg2
+from openpyxl.utils import get_column_letter
 
 UPLOAD_FOLDER = 'uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -1287,6 +1288,7 @@ def exportar_registros_excel():
             conn.close()
 
 
+
 @app.route('/exportar-proyectos-excel', methods=['POST'])
 def exportar_proyectos_excel():
     project_ids = request.form.getlist('project_ids')
@@ -1299,7 +1301,7 @@ def exportar_proyectos_excel():
         conn = psycopg2.connect(**POSTGRES_CONFIG)
         cursor = conn.cursor()
         wb = Workbook()
-        wb.remove(wb.active)  # Eliminar hoja por defecto
+        wb.remove(wb.active)
 
         for pid in project_ids:
             try:
@@ -1307,32 +1309,29 @@ def exportar_proyectos_excel():
             except:
                 continue
 
-            # 1. Obtener info del proyecto
+            # 1. Info del Proyecto
             cursor.execute("""
                 SELECT nombre_proyecto, fecha_inicio, fecha_fin, director_obra, ubicacion, coordenadas
                 FROM proyectos WHERE id_proyecto = %s
             """, (pid_int,))
             proyecto = cursor.fetchone()
-            if not proyecto:
-                continue
+            if not proyecto: continue
 
             nombre, fecha_inicio, fecha_fin, director, ubicacion, coordenadas = proyecto
-            # Limpiar nombre para el título de la pestaña (máximo 31 caracteres)
             sheet_title = (nombre[:30] or f"Proyecto {pid_int}").strip().replace(":", "").replace("/", "")
             ws = wb.create_sheet(title=sheet_title)
 
-            # Encabezado de información del proyecto
             ws.append(["INFORMACIÓN DEL PROYECTO"])
             ws.append(["Nombre:", nombre])
             ws.append(["Fecha Inicio:", str(fecha_inicio)])
             ws.append(["Director:", director])
             ws.append(["Ubicación:", ubicacion])
-            ws.append([]) # Espacio en blanco
+            ws.append([]) 
 
-            # 2. Encabezado de registros (Tabla registrosiac)
-            ws.append(["ID", "Tipo de Informe", "Sede", "Repuestos Usados", "Repuestos a Cotizar", "Fecha", "Foto"])
+            # Encabezado de la tabla
+            ws.append(["ID", "Tipo de Informe", "Sede", "Repuestos Usados", "Repuestos a Cotizar", "Fecha", "Fotos --->"])
 
-            # 3. Obtener registros de la NUEVA tabla
+            # 2. Obtener registros
             cursor.execute("""
                 SELECT id_registro, tipo_informe, sede, repuestos_usados, repuestos_cotizar, fecha_registro
                 FROM registrosiac
@@ -1341,75 +1340,76 @@ def exportar_proyectos_excel():
             """, (pid_int,))
             registros = cursor.fetchall()
 
-            row_index = 8 # Punto de inicio para los datos
+            # Determinamos el índice de la fila donde empiezan los datos (normalmente fila 8)
+            current_row = 8 
             for reg in registros:
                 id_reg, tipo, sede, usados, cotizar, fecha = reg
                 fecha_str = fecha.strftime('%d/%m/%Y %H:%M') if fecha else ""
                 
-                # Escribimos los datos de texto (dejamos la columna G vacía para la foto)
-                ws.append([id_reg, tipo, sede, usados, cotizar, fecha_str, ""])
+                # Insertamos los datos de texto
+                ws.append([id_reg, tipo, sede, usados, cotizar, fecha_str])
 
-                # 4. BUSCAR LA FOTO en la tabla fotos_registro
+                # 3. BUSCAR TODAS LAS FOTOS del registro
                 cursor.execute("""
                     SELECT imagen_base64 FROM fotos_registro 
-                    WHERE id_registro = %s LIMIT 1
+                    WHERE id_registro = %s
                 """, (id_reg,))
-                foto_res = cursor.fetchone()
+                todas_las_fotos = cursor.fetchall() # CAMBIO: Traemos todas
 
-                if foto_res and foto_res[0]:
-                    try:
-                        foto_data = foto_res[0]
-                        if ',' in foto_data:
-                            base64_data = foto_data.split(',', 1)[1]
-                        else:
-                            base64_data = foto_data
-                        
-                        img_bytes = base64.b64decode(base64_data)
-                        img = Image.open(io.BytesIO(img_bytes))
-                        
-                        # Ajustar tamaño para la celda
-                        img.thumbnail((120, 120))
-                        img_io = io.BytesIO()
-                        img.save(img_io, format='PNG')
-                        img_io.seek(0)
+                # Colocamos las fotos horizontalmente (Columna G, H, I...)
+                for i, foto_res in enumerate(todas_las_fotos):
+                    if foto_res and foto_res[0]:
+                        try:
+                            foto_data = foto_res[0]
+                            base64_data = foto_data.split(',', 1)[1] if ',' in foto_data else foto_data
+                            
+                            img_bytes = base64.b64decode(base64_data)
+                            img = Image.open(io.BytesIO(img_bytes))
+                            
+                            img.thumbnail((120, 120))
+                            img_io = io.BytesIO()
+                            img.save(img_io, format='PNG')
+                            img_io.seek(0)
 
-                        img_excel = ExcelImage(img_io)
-                        # La foto va en la columna G (7ma columna)
-                        img_excel.anchor = f"G{row_index}"
-                        ws.add_image(img_excel)
+                            img_excel = ExcelImage(img_io)
+                            
+                            # Calculamos la columna: i=0 -> G(7), i=1 -> H(8), etc.
+                            col_letter = get_column_letter(7 + i)
+                            img_excel.anchor = f"{col_letter}{current_row}"
+                            ws.add_image(img_excel)
+                            
+                            # Ajustamos el ancho de la columna de la foto si es nueva
+                            ws.column_dimensions[col_letter].width = 20
+                        except Exception as e:
+                            print(f"Error foto {i} registro {id_reg}: {e}")
 
-                        # Aumentar altura de fila para que se vea la foto
-                        ws.row_dimensions[row_index].height = 95
-                    except Exception as e:
-                        print(f"Error procesando imagen del registro {id_reg}: {e}")
+                # Ajustamos la altura de la fila para que las fotos quepan
+                ws.row_dimensions[current_row].height = 95
+                current_row += 1
 
-                row_index += 1
+            # Ajustes de ancho básicos
+            ws.column_dimensions['A'].width = 8
+            ws.column_dimensions['B'].width = 20
+            ws.column_dimensions['C'].width = 15
+            ws.column_dimensions['D'].width = 30
+            ws.column_dimensions['E'].width = 30
+            ws.column_dimensions['F'].width = 18
 
-            # Ajustes de ancho de columnas para mejor lectura
-            ws.column_dimensions['A'].width = 8   # ID
-            ws.column_dimensions['B'].width = 20  # Tipo
-            ws.column_dimensions['C'].width = 15  # Sede
-            ws.column_dimensions['D'].width = 30  # Usados
-            ws.column_dimensions['E'].width = 30  # Cotizar
-            ws.column_dimensions['F'].width = 18  # Fecha
-            ws.column_dimensions['G'].width = 20  # Foto
-
-        # 5. Generar y enviar el archivo
+        # 4. Generar y enviar el archivo
         output = io.BytesIO()
         wb.save(output)
         output.seek(0)
 
         return send_file(output,
-                         download_name="reporte_consolidado_proyectos.xlsx",
+                         download_name="reporte_consolidado_fotos.xlsx",
                          as_attachment=True,
                          mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
     except Exception as e:
-        print(f"Error crítico exportando proyectos: {e}")
+        print(f"Error crítico excel: {e}")
         return f"Error al exportar: {e}", 500
     finally:
-        if conn:
-            conn.close()
+        if conn: conn.close()
 
 @app.route('/exportar-proyectos-pdf', methods=['POST'])
 def exportar_proyectos_pdf():
@@ -1437,7 +1437,7 @@ def exportar_proyectos_pdf():
 
             # Encabezado del proyecto
             p.setFont("Helvetica-Bold", 16)
-            p.setFillColorRGB(0.98, 0.68, 0.2) # Color Naranja #FFAF33 aprox
+            p.setFillColorRGB(0.98, 0.68, 0.2) 
             p.drawString(50, h - 50, f"PROYECTO: {proyecto[0]}")
             p.line(50, h - 55, 550, h - 55)
             
@@ -1456,8 +1456,8 @@ def exportar_proyectos_pdf():
             for reg in registros:
                 id_reg, tipo, sede, usados, cotizar, fecha = reg
                 
-                # Verificar espacio (si queda menos de 200px, nueva página)
-                if y < 200: 
+                # Verificar espacio para el texto del registro
+                if y < 150: 
                     p.showPage()
                     y = h - 50
 
@@ -1472,35 +1472,42 @@ def exportar_proyectos_pdf():
                 p.drawString(70, y, f"Repuestos Usados: {usados}")
                 y -= 15
                 p.drawString(70, y, f"A cotizar: {cotizar}")
-                y -= 10
-
-                # 3. BUSCAR FOTO para este registro
-                cursor.execute("SELECT imagen_base64 FROM fotos_registro WHERE id_registro = %s LIMIT 1", (id_reg,))
-                foto_res = cursor.fetchone()
-
-                if foto_res and foto_res[0]:
-                    try:
-                        foto_data = foto_res[0]
-                        if ',' in foto_data:
-                            base64_data = foto_data.split(',', 1)[1]
-                        else:
-                            base64_data = foto_data
-                        
-                        img_bytes = base64.b64decode(base64_data)
-                        img_io = io.BytesIO(img_bytes)
-                        img_reader = ImageReader(img_io)
-                        
-                        # Dibujar imagen (x, y, ancho, alto)
-                        p.drawImage(img_reader, 70, y - 100, width=120, height=90, preserveAspectRatio=True)
-                        y -= 110 # Espacio que ocupa la imagen
-                    except Exception as e:
-                        print(f"Error imagen en PDF: {e}")
-                        y -= 10
-                
                 y -= 20
-                p.setStrokeColorRGB(0.8, 0.8, 0.8)
-                p.line(70, y + 10, 500, y + 10) # Línea divisoria
+
+                # 3. BUSCAR TODAS LAS FOTOS para este registro
+                cursor.execute("SELECT imagen_base64 FROM fotos_registro WHERE id_registro = %s", (id_reg,))
+                todas_las_fotos = cursor.fetchall() # CAMBIO: fetchall para traer todas
+
+                for foto_res in todas_las_fotos:
+                    if foto_res and foto_res[0]:
+                        try:
+                            # Verificar si hay espacio para la SIGUIENTE imagen (100px de alto)
+                            # Si no hay espacio, saltamos de página antes de dibujar la foto
+                            if y < 120:
+                                p.showPage()
+                                y = h - 50
+                                p.setFont("Helvetica-Oblique", 8)
+                                p.drawString(60, y, f"... Fotos registro #{id_reg} (continuación)")
+                                y -= 20
+
+                            foto_data = foto_res[0]
+                            base64_data = foto_data.split(',', 1)[1] if ',' in foto_data else foto_data
+                            
+                            img_bytes = base64.b64decode(base64_data)
+                            img_io = io.BytesIO(img_bytes)
+                            img_reader = ImageReader(img_io)
+                            
+                            # Dibujar imagen
+                            p.drawImage(img_reader, 70, y - 100, width=150, height=100, preserveAspectRatio=True)
+                            y -= 115 # Bajamos el cursor para la siguiente foto
+                        except Exception as e:
+                            print(f"Error imagen en PDF: {e}")
+
+                # Línea separadora después de procesar todas las fotos del registro
                 y -= 10
+                p.setStrokeColorRGB(0.8, 0.8, 0.8)
+                p.line(70, y, 500, y)
+                y -= 25
 
             p.showPage() # Nueva página por proyecto
 

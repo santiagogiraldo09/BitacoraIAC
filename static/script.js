@@ -1099,6 +1099,26 @@ async function startFieldRecording(btn) {
                 startFieldRecording(btn);
             }, 1500); 
         }
+
+        // --- COMANDO: SIGUIENTE CAMPO ---
+        else if (partialText.includes("siguiente campo")) {
+            console.log("⏭️ Comando detectado: Saltando al siguiente campo.");
+
+            // 1. Detenemos el motor de Azure para el campo actual
+            recognizer.stopContinuousRecognitionAsync();
+
+            // 2. Apagamos visualmente el micrófono y limpiamos el estado
+            if (typeof finalizarVisualizacionCampo === "function") {
+                finalizarVisualizacionCampo(btn, stopButton);
+            }
+
+            // 3. Movemos el foco al siguiente ID (usando la variable que ya tienes)
+            if (typeof irAlSiguienteCampo === "function") {
+                irAlSiguienteCampo(targetInputId);
+            }
+            
+            hablarTexto("Cambiando al siguiente campo.");
+        }
         
         // --- COMANDO: ACTIVAR CÁMARA ---
         else if (partialText.includes("activar cámara")) {
@@ -1112,7 +1132,7 @@ async function startFieldRecording(btn) {
                 finalizarVisualizacionCampo(btn, stopButton);
             }
 
-            hablarTexto("Cámara abierta. El dictado de texto se pausó, pero sigo atento a tus comandos.");
+            hablarTexto("Cámara abierta.");
 
             // 3. Abrir la cámara
             const cameraBtn = document.getElementById('activate-camera-btn');
@@ -1127,7 +1147,7 @@ async function startFieldRecording(btn) {
             
             if (typeof takePhoto === 'function') {
                 takePhoto(); 
-                hablarTexto("Foto capturada. Puedes tomar otra o decir 'Guardar registro'.");
+                hablarTexto("Foto capturada.");
                 
                 // TRUCO TÉCNICO: Forzamos un reinicio rápido del buffer interno
                 // para que no se quede bloqueado con la frase anterior
@@ -1144,7 +1164,7 @@ async function startFieldRecording(btn) {
             recognizer.stopContinuousRecognitionAsync();
             finalizarVisualizacionCampo(btn, stopButton);
             
-            hablarTexto("Entendido. Guardando todos los datos en la base de datos de I.A.C.");
+            hablarTexto("Entendido");
             
             if (typeof saveRecord === 'function') {
                 saveRecord();

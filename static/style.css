@@ -70,7 +70,7 @@ input {
     padding: 10px;
     margin: 15px 0;
     display: block;
-    background-color: #FF6600;  /* Fondo azul */
+    background-color: #FFAF33;  /* Fondo azul */
     color: white;               /* Texto blanco */
     border: none;
     border-radius: 5px;
@@ -127,7 +127,7 @@ button {
 }
 
 #start-camera, #take-photo, #save-record {
-    background-color: #FF6600;
+    background-color: #FFAF33;
     color: white;
 }
 
@@ -277,7 +277,7 @@ button {
     width: 60px;
     height: 60px;
     border-radius: 50%;
-    background-color: #FF6600;
+    background-color: #FFAF33;
     color: white;
     font-size: 24px;
     border: none;
