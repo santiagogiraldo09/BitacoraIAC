@@ -52,7 +52,7 @@ SYNCHRO_CONFIG = {
     'token_url': 'https://ims.bentley.com/connect/token',
     'forms_url': 'https://api.bentley.com/forms',
     'itwin_id': '29d0867b-2158-4b7a-ae03-c63a7661ca58',
-    'form_id': 'e4bQKVghekuuA8Y6dmHKWPFDh67WqydKr1vfz4Z0oAs'  # Formulario 1.09-00001
+    'form_id': 'e4bQKVghekuuA8Y6dmHKWN5SZF4gyoVCgJKTeeHYP60'  # Formulario 1.09-00001
 }
 
 # Configura SharePoint (modifica con tus datos)
