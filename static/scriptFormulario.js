@@ -218,10 +218,23 @@ function transcribeAudio(audioBlob) {
                     
                     // 2. Quitamos el punto decimal SOLO SI está al final del número (ej: "1." se vuelve "1", pero "5.5" se queda).
                     transcript = transcript.replace(/\.$/, '');
+                    // Asignamos el texto ya limpio
+                    currentTargetInput.value = transcript; 
+                    // --- FIN DE LA CORRECCIÓN ---
                 }
-                
+                // --- NUEVA LÓGICA PARA FECHAS ---
+                else if (currentTargetInput.type === 'date') {
+                    const dateFormatted = parseSpanishDate(transcript);
+                    if (dateFormatted) {
+                        currentTargetInput.value = dateFormatted;
+                    } else {
+                        alert("No se reconoció un formato de fecha válido (Ej: 5 de marzo 2026)");
+                    }
+                } else {
+                    currentTargetInput.value = data.text;
+                }
                 // Asignamos el texto ya limpio
-                currentTargetInput.value = transcript; 
+                //currentTargetInput.value = transcript; 
                 // --- FIN DE LA CORRECCIÓN ---
 
             } else {
@@ -406,6 +419,32 @@ function deleteVideo(index) {
     capturedVideos[index] = null; // Marcar como nulo
     const thumbnail = document.querySelector(`#videoThumbnails .photo-thumbnail-wrapper[data-index='${index}']`);
     if (thumbnail) thumbnail.remove();
+}
+
+function parseSpanishDate(text) {
+    // Diccionario de meses
+    const meses = {
+        "enero": "01", "febrero": "02", "marzo": "03", "abril": "04",
+        "mayo": "05", "junio": "06", "julio": "07", "agosto": "08",
+        "septiembre": "09", "octubre": "10", "noviembre": "11", "diciembre": "12"
+    };
+
+    // Intentar extraer día, mes y año con Regex
+    // Ejemplo esperado: "5 de marzo de 2026" o "05 marzo 2026"
+    const regex = /(\d{1,2})\s+(?:de\s+)?([a-z]+)\s+(?:de\s+)?(\d{4})/;
+    const match = text.match(regex);
+
+    if (match) {
+        const dia = match[1].padStart(2, '0');
+        const mesNombre = match[2];
+        const anio = match[3];
+        const mesNumero = meses[mesNombre];
+
+        if (mesNumero) {
+            return `${anio}-${mesNumero}-${dia}`; // Formato YYYY-MM-DD
+        }
+    }
+    return null;
 }
 
 // ==================================================================
